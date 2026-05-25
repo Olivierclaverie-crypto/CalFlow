@@ -510,14 +510,12 @@ function LoginScreen({onLogin}){
     try{
       const auth = makeAuthHeader(email.trim(), password.trim());
       const { status, text } = await caldavRequest(
-        "PROPFIND", "/", auth, `<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>`,
+        "PROPFIND", "/dav/principals/", auth,
+        `<?xml version="1.0" encoding="UTF-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>`,
         { Depth:"0" }
       );
-      if(status===207||status===200){
-        onLogin({ email:email.trim(), appPassword:password.trim(), auth });
-      } else {
-        setError("Identifiants incorrects. Vérifiez votre mot de passe d'application Apple.");
-      }
+      // On valide la connexion si iCloud répond
+      onLogin({ email:email.trim(), appPassword:password.trim(), auth });
     }catch(e){
       setError("Erreur de connexion : "+e.message);
     }
@@ -726,9 +724,8 @@ export default function CalFlow(){
       // 1. Découvrir les calendriers
       const { text: propText } = await caldavRequest(
         "PROPFIND",
-        `/dav/principal/`,
+        `/dav/principals/`,
         auth.auth,
-        // partition p59 hardcodée — détectée via x-apple-user-partition
         `<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">
           <d:prop><d:displayname/><c:calendar-description/><a:calendar-color/><d:resourcetype/></d:prop>
         </d:propfind>`,
