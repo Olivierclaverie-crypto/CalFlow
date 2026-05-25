@@ -1,5 +1,5 @@
 // api/caldav.js — Vercel Serverless Function
-// Proxy CalDAV iCloud — partition p59
+// Proxy CalDAV iCloud p59
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -23,7 +23,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Utilise p59 comme base — découverte automatique si redirect
   const base = "https://p59-caldav.icloud.com";
   const path = caldavPath.startsWith("/") ? caldavPath : "/" + caldavPath;
   const icloudUrl = `${base}${path}`;
@@ -36,7 +35,8 @@ export default async function handler(req, res) {
         "Content-Type": req.headers["content-type"] || "application/xml; charset=utf-8",
         "Depth": req.headers["depth"] || "0",
         "Prefer": req.headers["prefer"] || "",
-        "User-Agent": "CalFlow/1.0",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) CalFlow/1.0",
+        "Accept": "text/xml, application/xml",
       },
       redirect: "follow",
     };
@@ -53,8 +53,8 @@ export default async function handler(req, res) {
     res.status(response.status);
     const ct = response.headers.get("content-type");
     if (ct) res.setHeader("Content-Type", ct);
-    // Expose l'URL finale en cas de redirect
-    res.setHeader("X-Final-Url", response.url||icloudUrl);
+    res.setHeader("X-Final-Url", response.url || icloudUrl);
+    res.setHeader("X-Status", response.status);
     res.send(text);
   } catch (err) {
     res.status(500).json({ error: err.message });
