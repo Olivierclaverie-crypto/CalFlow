@@ -154,6 +154,7 @@ function parseEvents(xml, calHref, calColor, calName) {
   return events;
 }
 
+// ── Parser ICS ───────────────────────────────────────────────────────────────
 function parseICS(ics, href, calHref, calColor, calName) {
   const lines = ics.replace(/\r\n /g,"").replace(/\r\n/g,"\n").split("\n");
   const get = key => {
@@ -161,23 +162,29 @@ function parseICS(ics, href, calHref, calColor, calName) {
     if(!line) return null;
     return line.replace(/^[^:]+:/,"").trim();
   };
+  const getAll = key => lines
+    .filter(l=>l.startsWith(key+":") || l.startsWith(key+";"))
+    .map(l=>l.replace(/^[^:]+:/,"").trim());
 
-  const uid    = get("UID");
-  const summary= get("SUMMARY") || "(sans titre)";
-  const dtstart= get("DTSTART");
-  const dtend  = get("DTEND");
-  const loc    = get("LOCATION") || "";
-  const desc   = get("DESCRIPTION") || "";
-  const rrule  = get("RRULE") || "";
+  const uid     = get("UID");
+  const summary = get("SUMMARY") || "(sans titre)";
+  const dtstart = get("DTSTART");
+  const dtend   = get("DTEND");
+  const loc     = get("LOCATION") || "";
+  const desc    = get("DESCRIPTION") || "";
+  const rrule   = get("RRULE") || "";
+  const exdates = getAll("EXDATE").map(s=>s.slice(0,8)).map(s=>
+    s.slice(0,4)+"-"+s.slice(4,6)+"-"+s.slice(6,8));
 
   if(!uid || !dtstart) return null;
 
-  const allDay = dtstart.length===8;
+  const allDay = dtstart.replace(/;[^:]+/,"").length===8 || dtstart.includes("VALUE=DATE");
   const parseDate = s => {
     if(!s) return null;
-    if(s.length===8) return s.slice(0,4)+"-"+s.slice(4,6)+"-"+s.slice(6,8);
-    const y=s.slice(0,4), mo=s.slice(4,6), d=s.slice(6,8);
-    const h=s.slice(9,11)||"00", mi=s.slice(11,13)||"00";
+    const clean = s.replace(/;[^:]*:/,"").replace(/Z$/,"");
+    if(clean.length===8) return clean.slice(0,4)+"-"+clean.slice(4,6)+"-"+clean.slice(6,8);
+    const y=clean.slice(0,4), mo=clean.slice(4,6), d=clean.slice(6,8);
+    const h=clean.slice(9,11)||"00", mi=clean.slice(11,13)||"00";
     return { date: `${y}-${mo}-${d}`, time: `${h}:${mi}` };
   };
 
@@ -194,13 +201,107 @@ function parseICS(ics, href, calHref, calColor, calName) {
     allDay,
     startDate: allDay ? start : start.date,
     startTime: allDay ? null  : start.time,
-    endDate:   allDay ? (end||start) : end.date,
-    endTime:   allDay ? null  : end.time,
+    endDate:   allDay ? (typeof end==="string"?end:(end?.date||start)) : end?.date,
+    endTime:   allDay ? null  : end?.time,
     location:  loc,
     notes:     desc.replace(/\\n/g,"\n"),
     rrule,
+    exdates,
     type: "event",
   };
+}
+
+// ── Expansion des récurrences ─────────────────────────────────────────────────
+function expandRecurring(ev, rangeStart, rangeEnd) {
+  if(!ev.rrule) return [ev];
+
+  const occurrences = [];
+  const params = {};
+  ev.rrule.split(";").forEach(p=>{
+    const [k,v] = p.split("=");
+    params[k] = v;
+  });
+
+  const freq    = params.FREQ;
+  const count   = params.COUNT ? parseInt(params.COUNT) : 500;
+  const until   = params.UNTIL ? params.UNTIL.slice(0,8) : null;
+  const interval= params.INTERVAL ? parseInt(params.INTERVAL) : 1;
+  const byDay   = params.BYDAY ? params.BYDAY.split(",") : null;
+
+  // Durée de l'événement en ms
+  const startD  = new Date(ev.startDate+"T"+(ev.startTime||"00:00")+":00");
+  const endD    = new Date((ev.endDate||ev.startDate)+"T"+(ev.endTime||ev.startTime||"00:00")+":00");
+  const duration= endD - startD;
+
+  let current = new Date(startD);
+  let n = 0;
+
+  const toISO = d => d.toISOString().slice(0,10);
+  const toTime = d => d.toTimeString().slice(0,5);
+
+  // Jours de la semaine pour BYDAY
+  const DAYS = ["SU","MO","TU","WE","TH","FR","SA"];
+
+  while(n < count) {
+    const curISO = toISO(current);
+
+    // Stop si dépassé UNTIL ou rangeEnd (+ 1 an buffer)
+    if(until && curISO > until.slice(0,4)+"-"+until.slice(4,6)+"-"+until.slice(6,8)) break;
+    if(curISO > rangeEnd) break;
+
+    // Vérifier BYDAY pour WEEKLY
+    let matchesDay = true;
+    if(byDay && freq==="WEEKLY"){
+      const dayCode = DAYS[current.getDay()];
+      matchesDay = byDay.some(d=>d.includes(dayCode));
+    }
+
+    if(matchesDay && curISO >= rangeStart && !ev.exdates?.includes(curISO)) {
+      const occEnd = new Date(current.getTime() + duration);
+      occurrences.push({
+        ...ev,
+        id: `${ev.id}_${curISO}`,
+        startDate: curISO,
+        startTime: ev.allDay ? null : toTime(current),
+        endDate: toISO(occEnd),
+        endTime: ev.allDay ? null : toTime(occEnd),
+        isRecurring: true,
+        masterUid: ev.id,
+        recurrenceDate: curISO,
+      });
+      n++;
+    }
+
+    // Avancer selon la fréquence
+    const next = new Date(current);
+    switch(freq){
+      case "DAILY":
+        next.setDate(next.getDate() + interval);
+        break;
+      case "WEEKLY":
+        if(byDay && byDay.length > 1){
+          // Multi-jours : avancer jour par jour
+          next.setDate(next.getDate() + 1);
+        } else {
+          next.setDate(next.getDate() + 7 * interval);
+        }
+        break;
+      case "MONTHLY":
+        next.setMonth(next.getMonth() + interval);
+        break;
+      case "YEARLY":
+        next.setFullYear(next.getFullYear() + interval);
+        break;
+      default:
+        next.setDate(next.getDate() + 7);
+    }
+    current = next;
+
+    // Sécurité anti-boucle infinie
+    if(n > 1000) break;
+  }
+
+  return occurrences.length > 0 ? occurrences : [ev];
 }
 
 // ── Tâches glissantes ─────────────────────────────────────────────────────────
@@ -221,6 +322,23 @@ function slideTasksToToday(tasks) {
 }
 
 // ── Composants UI ─────────────────────────────────────────────────────────────
+// ── Helper RRULE → français ──────────────────────────────────────────────────
+function rruleToFr(rrule){
+  if(!rrule) return "";
+  const p={};
+  rrule.split(";").forEach(x=>{const[k,v]=x.split("=");p[k]=v;});
+  const interval = p.INTERVAL||"1";
+  switch(p.FREQ){
+    case "DAILY":   return interval==="1"?"Quotidien":`Tous les ${interval} jours`;
+    case "WEEKLY":
+      if(p.BYDAY==="MO,TU,WE,TH,FR") return "Lun–Ven (jours ouvrés)";
+      return interval==="1"?"Hebdomadaire":`Toutes les ${interval} semaines`;
+    case "MONTHLY": return interval==="1"?"Mensuel":`Tous les ${interval} mois`;
+    case "YEARLY":  return "Annuel";
+    default: return "Récurrent";
+  }
+}
+
 function Btn({onClick,children,variant="ghost",style={},disabled=false}){
   const base={border:"none",cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",
     borderRadius:8,fontSize:13,fontWeight:700,padding:"8px 16px",transition:"all .15s",
@@ -275,11 +393,23 @@ function EventForm({initial,calendars,defaultCalHref,onSave,onCancel}){
   const [calHref,setCalHref]   = useState(initial?.calHref||defaultCalHref||calendars[0]?.href||"");
   const [location,setLocation] = useState(initial?.location||"");
   const [notes,setNotes]       = useState(initial?.notes||"");
+  const [rrule,setRrule]       = useState(initial?.rrule||"");
+  const [editMode,setEditMode] = useState("this"); // this | all | following
+
+  const RECURRENCE_OPTIONS = [
+    { value:"",                           label:"Aucune" },
+    { value:"FREQ=DAILY;INTERVAL=1",      label:"Quotidienne" },
+    { value:"FREQ=WEEKLY;INTERVAL=1",     label:"Hebdomadaire" },
+    { value:"FREQ=WEEKLY;INTERVAL=2",     label:"Toutes les 2 semaines" },
+    { value:"FREQ=MONTHLY;INTERVAL=1",    label:"Mensuelle" },
+    { value:"FREQ=YEARLY;INTERVAL=1",     label:"Annuelle" },
+    { value:"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", label:"Lun–Ven (jours ouvrés)" },
+  ];
 
   function save(){
     if(!title.trim()) return;
     onSave({title:title.trim(),allDay,startDate,startTime:allDay?null:startTime,
-      endDate,endTime:allDay?null:endTime,calHref,location,notes});
+      endDate,endTime:allDay?null:endTime,calHref,location,notes,rrule,editMode});
   }
 
   return(
@@ -332,6 +462,33 @@ function EventForm({initial,calendars,defaultCalHref,onSave,onCancel}){
           ))}
         </select>
       </div>
+
+      {/* Récurrence */}
+      <div>
+        <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>Récurrence</label>
+        <select value={rrule} onChange={e=>setRrule(e.target.value)} style={{...iStyle}}>
+          {RECURRENCE_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+
+      {/* Mode édition si récurrent existant */}
+      {initial?.rrule&&(
+        <div>
+          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>Modifier</label>
+          <div style={{display:"flex",gap:6}}>
+            {[["this","Cet événement"],["following","Celui-ci et suivants"],["all","Tous"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setEditMode(v)} style={{
+                flex:1,padding:"8px 4px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",
+                border:`1.5px solid ${editMode===v?C.accent:C.border}`,
+                background:editMode===v?C.accentLight:"transparent",
+                color:editMode===v?C.accent:C.muted,
+                fontSize:11,fontWeight:700,transition:"all .15s",textAlign:"center"}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <input value={location} onChange={e=>setLocation(e.target.value)}
         placeholder="Lieu (optionnel)" style={iStyle}/>
@@ -476,6 +633,20 @@ function EventDetail({ev,onEdit,onDelete,onClose,onShare,onCopy}){
         )}
       </div>
 
+      {ev.isRecurring&&(
+        <div style={{fontSize:12,color:C.accent,background:C.accentLight,
+          border:`1px solid ${C.accentBorder}`,borderRadius:8,padding:"4px 10px",
+          display:"inline-flex",alignItems:"center",gap:4}}>
+          🔁 Événement récurrent
+        </div>
+      )}
+      {ev.rrule&&!ev.isRecurring&&(
+        <div style={{fontSize:12,color:C.accent,background:C.accentLight,
+          border:`1px solid ${C.accentBorder}`,borderRadius:8,padding:"4px 10px",
+          display:"inline-flex",alignItems:"center",gap:4}}>
+          🔁 {rruleToFr(ev.rrule)}
+        </div>
+      )}
       {ev.location&&(
         <div style={{fontSize:14,color:C.muted}}>📍 {ev.location}</div>
       )}
@@ -759,8 +930,8 @@ export default function CalFlow(){
       // 2. Charger les événements de chaque calendrier (3 mois en arrière)
       const since = new Date(); since.setMonth(since.getMonth()-3);
       const sinceStr = since.toISOString().replace(/[-:]/g,"").slice(0,15)+"Z";
-      const until = new Date(); until.setFullYear(until.getFullYear()+1);
-      const untilStr = until.toISOString().replace(/[-:]/g,"").slice(0,15)+"Z";
+      const until2 = new Date(); until2.setFullYear(until2.getFullYear()+1);
+      const untilStr = until2.toISOString().replace(/[-:]/g,"").slice(0,15)+"Z";
 
       const allEvents = [];
       for(const cal of cals){
@@ -778,7 +949,16 @@ export default function CalFlow(){
             { Depth:"1" }
           );
           const evs = parseEvents(evText, cal.href, cal.color, cal.displayName);
-          allEvents.push(...evs);
+          // Expand les récurrences sur 3 mois en arrière + 1 an en avant
+          const rStart = toISO(since);
+          const rEnd = toISO(until2);
+          evs.forEach(ev => {
+            if(ev.rrule) {
+              allEvents.push(...expandRecurring(ev, rStart, rEnd));
+            } else {
+              allEvents.push(ev);
+            }
+          });
         }catch(e){}
       }
       setEvents(allEvents);
@@ -808,6 +988,7 @@ export default function CalFlow(){
       `UID:${uid}`,
       dtstart, dtend,
       `SUMMARY:${ev.title}`,
+      ev.rrule&&!ev.isRecurring?`RRULE:${ev.rrule}`:"",
       ev.location?`LOCATION:${ev.location}`:"",
       ev.notes?`DESCRIPTION:${ev.notes.replace(/\n/g,"\\n")}`:"",
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g,"").slice(0,15)}Z`,
