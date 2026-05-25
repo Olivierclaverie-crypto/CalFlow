@@ -510,7 +510,7 @@ function LoginScreen({onLogin}){
     try{
       const auth = makeAuthHeader(email.trim(), password.trim());
       const { status, text } = await caldavRequest(
-        "PROPFIND", "/dav/principals/", auth,
+        "PROPFIND", "/1012673262/principal/", auth,
         `<?xml version="1.0" encoding="UTF-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>`,
         { Depth:"0" }
       );
@@ -724,7 +724,7 @@ export default function CalFlow(){
       // 1. Découvrir les calendriers
       const { text: propText } = await caldavRequest(
         "PROPFIND",
-        `/dav/principals/`,
+        `/1012673262/principal/`,
         auth.auth,
         `<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">
           <d:prop><d:displayname/><c:calendar-description/><a:calendar-color/><d:resourcetype/></d:prop>
