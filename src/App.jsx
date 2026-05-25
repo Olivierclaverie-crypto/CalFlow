@@ -1185,23 +1185,36 @@ export default function CalFlow(){
               color:C.muted,cursor:"pointer",fontSize:18,padding:4}}>⚙</button>
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <span style={{fontSize:13,color:C.muted,fontWeight:600}}>{fmtWeekRange(weekDays)}</span>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>{setWeekStart(getWeekStart(new Date()));}}
-              style={{fontSize:11,fontWeight:700,color:C.accent,background:C.accentLight,
-                border:`1px solid ${C.accentBorder}`,borderRadius:8,padding:"4px 10px",
-                cursor:"pointer",fontFamily:"inherit"}}>Aujourd'hui</button>
-            <button onClick={()=>setTaskFormOpen(true)}
-              style={{fontSize:11,fontWeight:700,color:C.goldDark,background:C.goldLight,
-                border:`1px solid ${C.gold}88`,borderRadius:8,padding:"4px 10px",
-                cursor:"pointer",fontFamily:"inherit"}}>↻ Tâche</button>
-            <button onClick={()=>setFormOpen(true)}
-              style={{fontSize:11,fontWeight:700,color:"#fff",background:C.accent,
-                border:"none",borderRadius:8,padding:"4px 10px",
-                cursor:"pointer",fontFamily:"inherit"}}>+ RDV</button>
+        {clipboard ? (
+          <div style={{display:"flex",alignItems:"center",gap:8,
+            background:C.goldLight,border:`1px solid ${C.gold}`,
+            borderRadius:10,padding:"8px 12px"}}>
+            <span style={{fontSize:12,color:C.goldDark,flex:1,fontWeight:700}}>
+              📋 {clipboard.title} — Tap sur un créneau pour coller
+            </span>
+            <button onClick={()=>{setClipboard(null);setPasteTarget(null);}}
+              style={{background:"none",border:"none",color:C.goldDark,
+                cursor:"pointer",fontSize:16,padding:"0 4px",fontWeight:700}}>✕</button>
           </div>
-        </div>
+        ) : (
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:13,color:C.muted,fontWeight:600}}>{fmtWeekRange(weekDays)}</span>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setWeekStart(getWeekStart(new Date()));}}
+                style={{fontSize:11,fontWeight:700,color:C.accent,background:C.accentLight,
+                  border:`1px solid ${C.accentBorder}`,borderRadius:8,padding:"4px 10px",
+                  cursor:"pointer",fontFamily:"inherit"}}>Aujourd'hui</button>
+              <button onClick={()=>setTaskFormOpen(true)}
+                style={{fontSize:11,fontWeight:700,color:C.goldDark,background:C.goldLight,
+                  border:`1px solid ${C.gold}88`,borderRadius:8,padding:"4px 10px",
+                  cursor:"pointer",fontFamily:"inherit"}}>↻ Tâche</button>
+              <button onClick={()=>setFormOpen(true)}
+                style={{fontSize:11,fontWeight:700,color:"#fff",background:C.accent,
+                  border:"none",borderRadius:8,padding:"4px 10px",
+                  cursor:"pointer",fontFamily:"inherit"}}>+ RDV</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Jours header ── */}
@@ -1320,28 +1333,18 @@ export default function CalFlow(){
                   background:isToday?"#f0f6ff":"transparent",
                   borderLeft:`0.5px solid ${C.border}`,
                   opacity:isPast?.7:1}}
-                  onTouchStart={e=>{
-                    // Détecter appui long pour coller
-                    if(!clipboard) return;
-                    const timer=setTimeout(()=>{
-                      const rect=e.currentTarget.getBoundingClientRect();
-                      const relY=e.touches[0].clientY-rect.top;
-                      const min=Math.round((relY/GRID_H)*GRID_TOTAL/30)*30+GRID_START;
-                      setPasteTarget({date:day,time:minutesToHHMM(min)});
-                    },600);
-                    e.currentTarget._longPressTimer=timer;
-                  }}
-                  onTouchEnd={e=>{
-                    clearTimeout(e.currentTarget._longPressTimer);
-                  }}
                   onClick={e=>{
-                    if(clipboard&&pasteTarget) return;
                     const rect=e.currentTarget.getBoundingClientRect();
                     const relY=e.clientY-rect.top;
                     const min=Math.round((relY/GRID_H)*GRID_TOTAL/30)*30+GRID_START;
-                    const time=minutesToHHMM(Math.max(GRID_START,Math.min(GRID_END-30,min)));
-                    setEditEv(null);
-                    setFormOpen(true);
+                    const time=minutesToHHMM(Math.max(0,Math.min(GRID_END-30,min)));
+                    if(clipboard){
+                      // Mode coller — ouvre confirmation avec heure présélectionnée
+                      setPasteTarget({date:day,time});
+                    } else {
+                      setEditEv(null);
+                      setFormOpen(true);
+                    }
                   }}>
 
                   {/* Événements du jour */}
@@ -1385,30 +1388,40 @@ export default function CalFlow(){
         </div>
       </div>
 
-      {/* ── Coller événement ── */}
-      {clipboard&&pasteTarget&&(
-        <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:300,
-          background:C.surface,borderTop:`2px solid ${C.gold}`,padding:"16px 20px",
-          display:"flex",gap:12,alignItems:"center"}}>
-          <span style={{flex:1,fontSize:13,color:C.ink}}>
-            Coller <strong>{clipboard.title}</strong> le {pasteTarget.date} à {pasteTarget.time} ?
-          </span>
-          <Btn onClick={async()=>{
-            const newEv={...clipboard,
-              id:`calflow-${Date.now()}`,
-              startDate:pasteTarget.date,
-              endDate:pasteTarget.date,
-              startTime:pasteTarget.time,
-              endTime:minutesToHHMM(timeToMinutes(pasteTarget.time)+
-                (timeToMinutes(clipboard.endTime||"10:00")-timeToMinutes(clipboard.startTime||"09:00"))),
-            };
-            setEvents(prev=>[...prev,newEv]);
-            await pushEvent(newEv);
-            setClipboard(null); setPasteTarget(null);
-          }} variant="primary" style={{padding:"8px 16px"}}>Coller</Btn>
-          <Btn onClick={()=>{setClipboard(null);setPasteTarget(null);}} variant="ghost">Annuler</Btn>
-        </div>
-      )}
+      {/* ── Modal confirmation coller ── */}
+      <Modal open={!!clipboard&&!!pasteTarget} onClose={()=>setPasteTarget(null)}
+        title="📋 Coller l'événement">
+        {clipboard&&pasteTarget&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:C.bg,borderRadius:10,padding:"12px 14px",
+              border:`1px solid ${C.border}`}}>
+              <div style={{fontWeight:700,fontSize:15,color:C.ink,marginBottom:4}}>{clipboard.title}</div>
+              <div style={{fontSize:13,color:C.muted}}>
+                📅 {pasteTarget.date} · {pasteTarget.time}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <Btn onClick={()=>setPasteTarget(null)}>Annuler</Btn>
+              <Btn variant="primary" onClick={async()=>{
+                const duration = timeToMinutes(clipboard.endTime||"10:00") - timeToMinutes(clipboard.startTime||"09:00");
+                const newEv={
+                  ...clipboard,
+                  id:`calflow-${Date.now()}`,
+                  masterUid: undefined,
+                  isRecurring: false,
+                  startDate:pasteTarget.date,
+                  endDate:pasteTarget.date,
+                  startTime:pasteTarget.time,
+                  endTime:minutesToHHMM(timeToMinutes(pasteTarget.time)+Math.max(30,duration)),
+                };
+                setEvents(prev=>[...prev,newEv]);
+                await pushEvent(newEv);
+                setClipboard(null); setPasteTarget(null);
+              }}>Coller ici</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* ── Modals ── */}
       {/* Créer RDV */}
