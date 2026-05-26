@@ -877,6 +877,7 @@ export default function CalFlow(){
   const [editEv,setEditEv]           = useState(null);
   const [editTask,setEditTask]       = useState(null);
   const [confirmDel,setConfirmDel]   = useState(null);
+  const [confirmDone,setConfirmDone] = useState(null); // tâche à confirmer terminée
   const [clipboard,setClipboard]     = useState(null); // événement copié
   const [pasteTarget,setPasteTarget] = useState(null); // {date, time}
 
@@ -1500,57 +1501,48 @@ export default function CalFlow(){
                   <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,
                     background:C.red,display:"flex",alignItems:"center",justifyContent:"center",
                     opacity:isSwiped?1:0,transition:"opacity .2s"}}>
-                    <button onClick={()=>{deleteTask(task);setSwipeTaskId(null);}}
+                    <button onClick={()=>{setConfirmDel(task);setSwipeTaskId(null);}}
                       style={{background:"none",border:"none",color:"#fff",
                         fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       🗑 Suppr.
                     </button>
                   </div>
-                  {/* Item */}
+                  {/* Item — tap ouvre la fiche */}
                   <div style={{
                     background:C.surface,
                     transform:isSwiped?"translateX(-80px)":"translateX(0)",
                     transition:"transform .2s",
-                    padding:"10px 16px",
+                    padding:"12px 16px",
                     borderBottom:`0.5px solid ${C.border}`,
-                    display:"flex",gap:10,alignItems:"center"}}
-                    onTouchStart={e=>{
-                      e.currentTarget._ts = e.touches[0].clientX;
-                    }}
+                    display:"flex",gap:10,alignItems:"center",cursor:"pointer"}}
+                    onTouchStart={e=>{e.currentTarget._ts=e.touches[0].clientX;}}
                     onTouchEnd={e=>{
-                      const dx = e.changedTouches[0].clientX - (e.currentTarget._ts||0);
-                      if(dx < -40) setSwipeTaskId(task.id);
-                      else if(dx > 20) setSwipeTaskId(null);
+                      const dx=e.changedTouches[0].clientX-(e.currentTarget._ts||0);
+                      if(dx<-40) setSwipeTaskId(task.id);
+                      else if(dx>20) setSwipeTaskId(null);
+                    }}
+                    onClick={()=>{
+                      if(swipeTaskId===task.id){setSwipeTaskId(null);return;}
+                      setDetailEv({...task,type:"task"});
+                      setDrawerOpen(false);
                     }}>
-                    {/* Checkbox */}
-                    <button onClick={()=>doneTask(task)}
-                      style={{width:22,height:22,borderRadius:6,flexShrink:0,
-                        border:`2px solid ${C.border}`,background:"transparent",
-                        cursor:"pointer",display:"flex",alignItems:"center",
-                        justifyContent:"center",fontSize:12,fontWeight:700,color:C.green}}>
-                    </button>
+                    {/* Indicateur priorité */}
+                    <div style={{width:10,height:10,borderRadius:"50%",
+                      background:pr.color,flexShrink:0,boxShadow:`0 0 6px ${pr.color}88`}}/>
                     {/* Contenu */}
-                    <div style={{flex:1,minWidth:0}} onClick={()=>setDetailEv({...task,type:"task"})}>
-                      <div style={{fontSize:13,fontWeight:600,color:C.ink,
-                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:600,color:C.ink,
+                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>
                         {task.title}
                       </div>
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <span style={{fontSize:10,color:pr.color,fontWeight:600}}>
-                          {pr.icon} {pr.label}
-                        </span>
-                        {task.dueDate&&(
-                          <span style={{fontSize:10,color:C.muted}}>· Échéance {task.dueDate}</span>
-                        )}
-                        {task.recurrence&&task.recurrence!=="none"&&(
-                          <span style={{fontSize:10,color:C.accent}}>· 🔁</span>
-                        )}
+                        <span style={{fontSize:11,color:pr.color,fontWeight:600}}>{pr.label}</span>
+                        {task.dueDate&&<span style={{fontSize:11,color:C.muted}}>· {task.dueDate}</span>}
+                        {task.recurrence&&task.recurrence!=="none"&&
+                          <span style={{fontSize:11,color:C.accent}}>· 🔁</span>}
                       </div>
                     </div>
-                    {/* Éditer */}
-                    <button onClick={()=>setEditTask(task)}
-                      style={{background:"none",border:"none",color:C.muted,
-                        cursor:"pointer",fontSize:16,padding:4,flexShrink:0}}>✎</button>
+                    <span style={{color:C.muted,fontSize:20,flexShrink:0}}>›</span>
                   </div>
                 </div>
               );
@@ -1632,7 +1624,7 @@ export default function CalFlow(){
         />}
         {detailEv?.type==="task"&&!detailEv.done&&(
           <div style={{marginTop:16}}>
-            <Btn onClick={()=>doneTask(detailEv)} variant="outline"
+            <Btn onClick={()=>{setConfirmDone(detailEv);setDetailEv(null);}} variant="outline"
               style={{width:"100%",color:C.green,borderColor:C.green}}>
               ✓ Marquer comme terminée
             </Btn>
@@ -1646,6 +1638,29 @@ export default function CalFlow(){
             </Btn>
           </div>
         )}
+      </Modal>
+
+      {/* ── Confirmation terminer ── */}
+      <Modal open={!!confirmDone} onClose={()=>setConfirmDone(null)} title="✓ Confirmer la validation">
+        <div style={{fontSize:14,color:C.muted,lineHeight:1.6,marginBottom:8}}>
+          Marquer cette tâche comme terminée ?
+        </div>
+        <div style={{background:C.bg,borderRadius:10,padding:"12px 14px",
+          border:`1px solid ${C.border}`,marginBottom:20}}>
+          <div style={{fontWeight:700,fontSize:14,color:C.ink,marginBottom:4}}>
+            {confirmDone?.title}
+          </div>
+          <div style={{fontSize:12,color:C.muted}}>
+            Elle sera inscrite dans la grille à {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <Btn onClick={()=>setConfirmDone(null)}>Annuler</Btn>
+          <Btn variant="primary" style={{background:C.green,boxShadow:`0 2px 8px ${C.green}44`}}
+            onClick={()=>{doneTask(confirmDone);setConfirmDone(null);}}>
+            ✓ Oui, terminée !
+          </Btn>
+        </div>
       </Modal>
 
       {/* Confirmation suppression */}
