@@ -882,6 +882,11 @@ export default function CalFlow(){
 
   // Swipe
   const touchStartX = useRef(null);
+  const touchStartY = useRef(null);
+
+  // Tiroir tâches
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [swipeTaskId, setSwipeTaskId] = useState(null); // pour swipe gauche supprimer
 
   const weekDays = getWeekDays(weekStart);
 
@@ -1125,8 +1130,10 @@ export default function CalFlow(){
       calColor:C.green,calName:"Synthèses NotesFlow"}));
 
     // Les deadlines et allDay restent dans les bannières uniquement
+    // Les tâches non-terminées vont dans le tiroir — seules les terminées restent dans la grille
     const timedCaldavEvs = caldavEvs.filter(ev=>!ev.allDay);
-    return [...timedCaldavEvs,...dayTasks];
+    const doneTasks = dayTasks.filter(t=>t.done);
+    return [...timedCaldavEvs,...doneTasks];
   }
 
   // ── Événements all-day (bannières) ──
@@ -1146,6 +1153,55 @@ export default function CalFlow(){
       }
     });
     return banners;
+  }
+
+  // ── Algorithme chevauchements ──
+  function layoutEvents(dayEvs) {
+    if(!dayEvs.length) return [];
+    // Trier par heure de début
+    const sorted = [...dayEvs].sort((a,b)=>
+      timeToMinutes(a.startTime||"00:00")-timeToMinutes(b.startTime||"00:00"));
+    
+    const columns = [];
+    const result = [];
+
+    sorted.forEach(ev => {
+      const evStart = timeToMinutes(ev.startTime||"00:00");
+      const evEnd   = timeToMinutes(ev.endTime||"01:00");
+      
+      // Chercher une colonne libre
+      let placed = false;
+      for(let col=0; col<columns.length; col++){
+        const lastEnd = timeToMinutes(columns[col].endTime||"01:00");
+        if(evStart >= lastEnd){
+          columns[col] = ev;
+          result.push({...ev, col, totalCols:1});
+          placed = true;
+          break;
+        }
+      }
+      if(!placed){
+        columns.push(ev);
+        result.push({...ev, col:columns.length-1, totalCols:1});
+      }
+    });
+
+    // Calculer totalCols pour chaque événement
+    const maxCols = columns.length;
+    result.forEach(ev => {
+      const evStart = timeToMinutes(ev.startTime||"00:00");
+      const evEnd   = timeToMinutes(ev.endTime||"01:00");
+      // Compter combien d'événements se chevauchent avec celui-ci
+      const overlapping = result.filter(other => {
+        if(other === ev) return false;
+        const oStart = timeToMinutes(other.startTime||"00:00");
+        const oEnd   = timeToMinutes(other.endTime||"01:00");
+        return evStart < oEnd && evEnd > oStart;
+      });
+      ev.totalCols = overlapping.length + 1;
+    });
+
+    return result;
   }
 
   // ── Render ──
@@ -1204,10 +1260,12 @@ export default function CalFlow(){
                 style={{fontSize:11,fontWeight:700,color:C.accent,background:C.accentLight,
                   border:`1px solid ${C.accentBorder}`,borderRadius:8,padding:"4px 10px",
                   cursor:"pointer",fontFamily:"inherit"}}>Aujourd'hui</button>
-              <button onClick={()=>setTaskFormOpen(true)}
+              <button onClick={()=>setDrawerOpen(o=>!o)}
                 style={{fontSize:11,fontWeight:700,color:C.goldDark,background:C.goldLight,
                   border:`1px solid ${C.gold}88`,borderRadius:8,padding:"4px 10px",
-                  cursor:"pointer",fontFamily:"inherit"}}>↻ Tâche</button>
+                  cursor:"pointer",fontFamily:"inherit"}}>
+                ↻ {tasks.filter(t=>!t.done).length>0?`${tasks.filter(t=>!t.done).length} Tâche${tasks.filter(t=>!t.done).length>1?"s":""}` : "Tâches"}
+              </button>
               <button onClick={()=>setFormOpen(true)}
                 style={{fontSize:11,fontWeight:700,color:"#fff",background:C.accent,
                   border:"none",borderRadius:8,padding:"4px 10px",
@@ -1347,27 +1405,32 @@ export default function CalFlow(){
                     }
                   }}>
 
-                  {/* Événements du jour */}
-                  {dayEvs.map(ev=>{
+                  {/* Événements du jour avec gestion chevauchements */}
+                  {layoutEvents(dayEvs).map(ev=>{
                     const y    = timeToY(ev.startTime||"09:00");
                     const h    = Math.max(20,durationToH(ev.startTime||"09:00",ev.endTime||"10:00"));
                     const isTask = ev.type==="task";
-                    // Couleur iCloud — fond coloré + texte blanc contrasté
                     const evColor = isTask ? C.gold : (ev.calColor||C.accent);
                     const bg    = isTask ? C.goldLight : evColor;
                     const border= evColor;
-                    // Texte blanc sur couleur foncée, noir sur couleur claire
                     function isLight(hex){
                       const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
                       return (r*299+g*587+b*114)/1000>128;
                     }
                     const textC = isTask ? C.goldDark : (isLight(evColor)?"#0F1D2B":"#ffffff");
                     const isDone= isTask&&ev.done;
+                    // Position horizontale selon colonne
+                    const colW = 100 / (ev.totalCols||1);
+                    const leftPct = (ev.col||0) * colW;
 
                     return(
-                      <div key={ev.id}
+                      <div key={ev.id+ev.col}
                         onClick={e=>{e.stopPropagation();setDetailEv(ev);}}
-                        style={{position:"absolute",top:y+1,left:1,right:1,height:h-2,
+                        style={{position:"absolute",
+                          top:y+1,
+                          left:`${leftPct+0.5}%`,
+                          width:`${colW-1}%`,
+                          height:h-2,
                           background:bg,border:`1.5px solid ${border}`,borderRadius:6,
                           padding:"3px 4px",cursor:"pointer",overflow:"hidden",
                           opacity:isDone?.6:1,transition:"opacity .2s",
@@ -1386,6 +1449,114 @@ export default function CalFlow(){
             })}
           </div>
         </div>
+      </div>
+
+      {/* ── Tiroir Tâches ── */}
+      <div style={{
+        position:"fixed",bottom:0,left:0,right:0,zIndex:200,
+        transform:drawerOpen?"translateY(0)":"translateY(calc(100% - 44px))",
+        transition:"transform .3s cubic-bezier(.4,0,.2,1)",
+        maxHeight:"60vh",display:"flex",flexDirection:"column",
+        background:C.surface,borderTop:`2px solid ${C.gold}`,
+        borderRadius:"16px 16px 0 0",
+        boxShadow:"0 -4px 20px rgba(0,0,0,.12)"}}>
+
+        {/* Handle + titre */}
+        <div onClick={()=>setDrawerOpen(o=>!o)}
+          style={{padding:"8px 16px 6px",cursor:"pointer",flexShrink:0}}>
+          <div style={{width:36,height:4,background:C.border,borderRadius:2,margin:"0 auto 8px"}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:13,fontWeight:700,color:C.goldDark}}>
+                ↻ Tâches en cours
+              </span>
+              <span style={{fontSize:11,background:C.goldLight,color:C.goldDark,
+                border:`1px solid ${C.gold}88`,borderRadius:10,padding:"1px 6px",fontWeight:700}}>
+                {tasks.filter(t=>!t.done).length}
+              </span>
+            </div>
+            <button onClick={e=>{e.stopPropagation();setTaskFormOpen(true);}}
+              style={{fontSize:11,fontWeight:700,color:"#fff",background:C.accent,
+                border:"none",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>
+              + Tâche
+            </button>
+          </div>
+        </div>
+
+        {/* Liste tâches */}
+        {drawerOpen&&(
+          <div style={{overflowY:"auto",flex:1,padding:"4px 0 20px"}}>
+            {tasks.filter(t=>!t.done).length===0&&(
+              <div style={{textAlign:"center",padding:"20px",color:C.muted,fontSize:13}}>
+                Aucune tâche en cours 🎉
+              </div>
+            )}
+            {tasks.filter(t=>!t.done).map(task=>{
+              const pr = PRIORITY[task.priority||"normal"];
+              const isSwiped = swipeTaskId===task.id;
+              return(
+                <div key={task.id} style={{position:"relative",overflow:"hidden"}}>
+                  {/* Fond rouge supprimer */}
+                  <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,
+                    background:C.red,display:"flex",alignItems:"center",justifyContent:"center",
+                    opacity:isSwiped?1:0,transition:"opacity .2s"}}>
+                    <button onClick={()=>{deleteTask(task);setSwipeTaskId(null);}}
+                      style={{background:"none",border:"none",color:"#fff",
+                        fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      🗑 Suppr.
+                    </button>
+                  </div>
+                  {/* Item */}
+                  <div style={{
+                    background:C.surface,
+                    transform:isSwiped?"translateX(-80px)":"translateX(0)",
+                    transition:"transform .2s",
+                    padding:"10px 16px",
+                    borderBottom:`0.5px solid ${C.border}`,
+                    display:"flex",gap:10,alignItems:"center"}}
+                    onTouchStart={e=>{
+                      e.currentTarget._ts = e.touches[0].clientX;
+                    }}
+                    onTouchEnd={e=>{
+                      const dx = e.changedTouches[0].clientX - (e.currentTarget._ts||0);
+                      if(dx < -40) setSwipeTaskId(task.id);
+                      else if(dx > 20) setSwipeTaskId(null);
+                    }}>
+                    {/* Checkbox */}
+                    <button onClick={()=>doneTask(task)}
+                      style={{width:22,height:22,borderRadius:6,flexShrink:0,
+                        border:`2px solid ${C.border}`,background:"transparent",
+                        cursor:"pointer",display:"flex",alignItems:"center",
+                        justifyContent:"center",fontSize:12,fontWeight:700,color:C.green}}>
+                    </button>
+                    {/* Contenu */}
+                    <div style={{flex:1,minWidth:0}} onClick={()=>setDetailEv({...task,type:"task"})}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.ink,
+                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>
+                        {task.title}
+                      </div>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:10,color:pr.color,fontWeight:600}}>
+                          {pr.icon} {pr.label}
+                        </span>
+                        {task.dueDate&&(
+                          <span style={{fontSize:10,color:C.muted}}>· Échéance {task.dueDate}</span>
+                        )}
+                        {task.recurrence&&task.recurrence!=="none"&&(
+                          <span style={{fontSize:10,color:C.accent}}>· 🔁</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Éditer */}
+                    <button onClick={()=>setEditTask(task)}
+                      style={{background:"none",border:"none",color:C.muted,
+                        cursor:"pointer",fontSize:16,padding:4,flexShrink:0}}>✎</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Modal confirmation coller ── */}
