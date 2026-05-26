@@ -669,7 +669,7 @@ function EventDetail({ev,onEdit,onDelete,onClose,onShare,onCopy}){
         <>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
             <Btn onClick={onEdit} variant="soft" style={{flex:1}}>✎ Modifier</Btn>
-            <Btn onClick={onShare} variant="outline" style={{flex:1}}>↗ Partager</Btn>
+            {!isTask&&<Btn onClick={onShare} variant="outline" style={{flex:1}}>↗ Partager</Btn>}
             <Btn onClick={onDelete} variant="danger" style={{flex:1}}>🗑 Supprimer</Btn>
           </div>
           {!isTask&&(
@@ -1464,7 +1464,7 @@ export default function CalFlow(){
       {/* ── Tiroir Tâches ── */}
       <div style={{
         position:"fixed",bottom:0,left:0,right:0,zIndex:200,
-        transform:drawerOpen?"translateY(0)":"translateY(calc(100% - 56px))",
+        transform:drawerOpen?"translateY(0)":"translateY(calc(100% - 170px))",
         transition:"transform .3s cubic-bezier(.4,0,.2,1)",
         maxHeight:"60vh",display:"flex",flexDirection:"column",
         background:C.surface,borderTop:`2px solid ${C.gold}`,
