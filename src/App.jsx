@@ -481,16 +481,16 @@ export default function App() {
       {/* Tiroir frais — V2 placeholder */}
       <div style={{
         position:"fixed",bottom:0,left:0,right:0,
-        height:44,
+        height:95,
         background:C.goldLight,
         borderTop:`1.5px solid ${C.gold}`,
         display:"flex",alignItems:"center",
         justifyContent:"space-between",
         padding:"0 16px",
+        paddingBottom:"env(safe-area-inset-bottom,16px)",
         zIndex:190,
-        paddingBottom:"env(safe-area-inset-bottom,0px)",
       }}>
-        <span style={{fontSize:14,fontWeight:800,color:C.goldDark,fontFamily:"Phenomena,sans-serif"}}>
+        <span style={{fontSize:16,fontWeight:800,color:C.goldDark,fontFamily:"Phenomena,sans-serif"}}>
           💰 Frais
         </span>
         <span style={{fontSize:11,color:C.goldDark,opacity:.6}}>Bientôt disponible</span>
