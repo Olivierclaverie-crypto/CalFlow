@@ -18,7 +18,7 @@ export default function TaskDrawer({
       position: "fixed",
       bottom: 0, left: 0, right: 0,
       zIndex: 200,
-      transform: drawerOpen ? "translateY(0)" : "translateY(calc(100% - 170px))",
+      transform: drawerOpen ? "translateY(-44px)" : "translateY(calc(100% - 214px))",
       transition: "transform .3s cubic-bezier(.4,0,.2,1)",
       maxHeight: "60vh",
       display: "flex",
@@ -27,7 +27,7 @@ export default function TaskDrawer({
       borderTop: `2px solid ${C.gold}`,
       borderRadius: "16px 16px 0 0",
       boxShadow: "0 -4px 20px rgba(0,0,0,.12)",
-      paddingBottom: "env(safe-area-inset-bottom, 20px)",
+      paddingBottom: "60px",
     }}>
 
       {/* Handle + flèche + titre */}
