@@ -18,7 +18,7 @@ export default function TaskDrawer({
       position: "fixed",
       bottom: 0, left: 0, right: 0,
       zIndex: 200,
-      transform: drawerOpen ? "translateY(-44px)" : "translateY(calc(100% - 214px))",
+      transform: drawerOpen ? "translateY(-95px)" : "translateY(calc(100% - 265px))",
       transition: "transform .3s cubic-bezier(.4,0,.2,1)",
       maxHeight: "60vh",
       display: "flex",
