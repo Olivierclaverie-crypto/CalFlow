@@ -89,11 +89,7 @@ export default function Header({
               background: C.accentLight, border: `1px solid ${C.accentBorder}`,
               borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit",
             }}>Aujourd'hui</button>
-            <button onClick={() => window.open("https://notes-flow-six.vercel.app", "_blank")} style={{
-              fontSize: 11, fontWeight: 700, color: C.accent,
-              background: C.accentLight, border: `1px solid ${C.accentBorder}`,
-              borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit",
-            }}>📝 NomadNotes</button>
+
             <button onClick={onAddEvent} style={{
               fontSize: 11, fontWeight: 700, color: "#fff",
               background: C.accent, border: "none",
