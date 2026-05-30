@@ -42,7 +42,7 @@ export const GRID_END   = 24 * 60;
 export const GRID_TOTAL = GRID_END - GRID_START;
 export const SLOT_H     = 56;
 export const GRID_H     = (GRID_TOTAL / 60) * SLOT_H;
-export const GRID_DEFAULT_SCROLL = 8 * 60;
+export const GRID_DEFAULT_SCROLL = 12 * 60;
 
 // ── Récurrences disponibles ───────────────────────────────────────────────────
 export const RECURRENCE_OPTIONS = [
