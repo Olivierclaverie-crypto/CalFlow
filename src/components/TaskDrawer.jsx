@@ -11,12 +11,13 @@ export default function TaskDrawer({
   onTaskDone,
   onTaskDelete,
   onAddTask,
+  onOpenNomadBook,
 }) {
   const [activeTab, setActiveTab] = useState(null);
   const openTasks = tasks.filter(t => !t.done);
 
   const MESSAGES = {
-    notes: "📝 NomadNotes — Capturez vos notes terrain",
+    notes: "📝 NomadBook — Carnet de route terrain",
     tasks: `👷 ${openTasks.length} tâche${openTasks.length > 1 ? "s" : ""} en cours`,
   };
 
@@ -27,7 +28,8 @@ export default function TaskDrawer({
   function handleTabTap(tab) {
     if (activeTab === tab) {
       if (tab === "notes") {
-        window.open("https://notes-flow-six.vercel.app", "_blank");
+        onOpenNomadBook && onOpenNomadBook();
+        vibrate(10);
       } else if (tab === "tasks") {
         setSwipeTaskId(null);
         setDrawerOpen(true);
@@ -72,13 +74,11 @@ export default function TaskDrawer({
           borderRadius: "16px 16px 0 0",
           boxShadow: "0 -4px 20px rgba(0,0,0,.12)",
         }}>
-          {/* Handle fermer */}
           <div onClick={() => { setDrawerOpen(false); vibrate(8); }}
             style={{ padding: "8px 16px 6px", cursor: "pointer", flexShrink: 0, textAlign: "center" }}>
             <div style={{ fontSize: 20, color: C.gold, fontWeight: 700 }}>↓</div>
           </div>
 
-          {/* Bouton + Tâche */}
           <div style={{ padding: "0 16px 8px", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
             <button onClick={() => { onAddTask(); vibrate(10); }} style={{
               fontSize: 12, fontWeight: 700, color: "#fff",
@@ -88,7 +88,6 @@ export default function TaskDrawer({
             }}>+ Tâche</button>
           </div>
 
-          {/* Liste tâches */}
           <div style={{ overflowY: "auto", flex: 1, padding: "0 0 20px" }}>
             {openTasks.length === 0 && (
               <div style={{ textAlign: "center", padding: "20px", color: C.muted, fontSize: 13 }}>
@@ -170,7 +169,7 @@ export default function TaskDrawer({
         </div>
       )}
 
-      {/* Barre fixe — 2 boutons équilibrés */}
+      {/* Barre fixe — 2 boutons */}
       <div style={{
         position: "fixed",
         bottom: 0, left: 0, right: 0,
@@ -183,11 +182,9 @@ export default function TaskDrawer({
         paddingBottom: "env(safe-area-inset-bottom, 8px)",
       }}>
         <div style={{ display: "flex", gap: 12, padding: "8px 20px 4px" }}>
-          {/* Notes */}
           <button onClick={() => handleTabTap("notes")} style={tabStyle("notes")}>
             📝 Notes
           </button>
-          {/* Tâches — casque de chantier */}
           <button onClick={() => handleTabTap("tasks")} style={{
             ...tabStyle("tasks"),
             position: "relative",
