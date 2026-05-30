@@ -22,7 +22,7 @@ const CHAPTERS = [
   { id:"operations",   emoji:"🎯", label:"Opérations en cours" },
   { id:"saisonnalite", emoji:"🎄", label:"Saisonnalité" },
   { id:"dedicaces",    emoji:"✍️", label:"Demandes de dédicace" },
-  { id:"compagnon",    emoji:"💻", label:"Compagnon" },
+  { id:"outils",    emoji:"💻", label:"Outils" },
 ];
 const DEFAULT_PERIODS = [
   { id:"s1", start:"2026-05-22", end:"2026-06-01", label:"Rapport Mai" },
