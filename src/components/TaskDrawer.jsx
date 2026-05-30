@@ -17,8 +17,7 @@ export default function TaskDrawer({
 
   const MESSAGES = {
     notes: "📝 NomadNotes — Capturez vos notes terrain",
-    tasks: `↻ ${openTasks.length} tâche${openTasks.length > 1 ? "s" : ""} en cours`,
-    frais: "💰 Module Frais — Bientôt disponible en Premium",
+    tasks: `👷 ${openTasks.length} tâche${openTasks.length > 1 ? "s" : ""} en cours`,
   };
 
   function vibrate(ms = 10) {
@@ -30,7 +29,7 @@ export default function TaskDrawer({
       if (tab === "notes") {
         window.open("https://notes-flow-six.vercel.app", "_blank");
       } else if (tab === "tasks") {
-        setSwipeTaskId(null); // ← reset swipe avant ouverture
+        setSwipeTaskId(null);
         setDrawerOpen(true);
         vibrate(10);
       }
@@ -43,12 +42,12 @@ export default function TaskDrawer({
 
   const tabStyle = (tab) => ({
     flex: 1,
-    padding: "8px 4px",
+    padding: "10px 8px",
     border: "none",
-    borderRadius: 10,
+    borderRadius: 12,
     cursor: "pointer",
     fontFamily: "Phenomena, sans-serif",
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 800,
     transition: "all .15s",
     background: activeTab === tab ? C.accent : "transparent",
@@ -82,9 +81,9 @@ export default function TaskDrawer({
           {/* Bouton + Tâche */}
           <div style={{ padding: "0 16px 8px", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
             <button onClick={() => { onAddTask(); vibrate(10); }} style={{
-              fontSize: 11, fontWeight: 700, color: "#fff",
+              fontSize: 12, fontWeight: 700, color: "#fff",
               background: C.accent, border: "none",
-              borderRadius: 8, padding: "4px 10px",
+              borderRadius: 8, padding: "6px 14px",
               cursor: "pointer", fontFamily: "inherit",
             }}>+ Tâche</button>
           </div>
@@ -101,29 +100,19 @@ export default function TaskDrawer({
               const isSwiped = swipeTaskId === task.id;
               return (
                 <div key={task.id} style={{ position: "relative", overflow: "hidden" }}>
-                  {/* Boutons swipe */}
                   <div style={{
                     position: "absolute", right: 0, top: 0, bottom: 0,
-                    width: 160,
-                    display: "flex",
+                    width: 160, display: "flex",
                     opacity: isSwiped ? 1 : 0,
                     transition: "opacity .2s",
                   }}>
-                    {/* Valider */}
-                    <div style={{
-                      flex: 1, background: C.green,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
+                    <div style={{ flex: 1, background: C.green, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <button onClick={() => { vibrate(20); onTaskDone(task); setSwipeTaskId(null); }}
                         style={{ background: "none", border: "none", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                         ✓ Valider
                       </button>
                     </div>
-                    {/* Supprimer */}
-                    <div style={{
-                      flex: 1, background: C.red,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
+                    <div style={{ flex: 1, background: C.red, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <button onClick={() => { vibrate(15); onTaskDelete(task); setSwipeTaskId(null); }}
                         style={{ background: "none", border: "none", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                         🗑 Suppr.
@@ -131,7 +120,6 @@ export default function TaskDrawer({
                     </div>
                   </div>
 
-                  {/* Ligne tâche */}
                   <div style={{
                     background: C.surface,
                     transform: isSwiped ? "translateX(-160px)" : "translateX(0)",
@@ -182,7 +170,7 @@ export default function TaskDrawer({
         </div>
       )}
 
-      {/* Barre fixe */}
+      {/* Barre fixe — 2 boutons équilibrés */}
       <div style={{
         position: "fixed",
         bottom: 0, left: 0, right: 0,
@@ -194,32 +182,31 @@ export default function TaskDrawer({
         flexDirection: "column",
         paddingBottom: "env(safe-area-inset-bottom, 8px)",
       }}>
-        <div style={{ display: "flex", gap: 6, padding: "6px 12px 4px" }}>
+        <div style={{ display: "flex", gap: 12, padding: "8px 20px 4px" }}>
+          {/* Notes */}
           <button onClick={() => handleTabTap("notes")} style={tabStyle("notes")}>
             📝 Notes
           </button>
+          {/* Tâches — casque de chantier */}
           <button onClick={() => handleTabTap("tasks")} style={{
             ...tabStyle("tasks"),
             position: "relative",
           }}>
-            ↻ Tâches
+            👷 Tâches
             {openTasks.length > 0 && (
               <span style={{
-                position: "absolute", top: 2, right: 4,
+                position: "absolute", top: 4, right: 6,
                 background: C.red, color: "#fff",
-                borderRadius: 10, fontSize: 9, fontWeight: 800,
-                padding: "1px 5px", lineHeight: 1.4,
+                borderRadius: 10, fontSize: 10, fontWeight: 800,
+                padding: "1px 6px", lineHeight: 1.4,
               }}>{openTasks.length}</span>
             )}
-          </button>
-          <button onClick={() => handleTabTap("frais")} style={tabStyle("frais")}>
-            💰 Frais
           </button>
         </div>
 
         {activeTab && (
           <div style={{
-            fontSize: 11, color: C.muted,
+            fontSize: 12, color: C.muted,
             textAlign: "center",
             padding: "0 16px",
             overflow: "hidden",
