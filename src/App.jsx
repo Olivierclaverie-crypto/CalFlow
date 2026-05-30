@@ -318,22 +318,40 @@ export default function App() {
     save("cf_auth",authObj);
   }
 
+  // ── CORRECTION BUG GARE DU NORD — écriture atomique anti-perte réseau ──
   function doneTask(task){
     const completedAt=new Date().toISOString();
     const completedDate=toISO(new Date());
     const completedTime=new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
-    setTasks(prev=>prev.map(t=>t.id===task.id?{...t,done:true,completedAt}:t));
     const doneEv={
       id:`done-${task.id}`,type:"task",done:true,
       title:task.title,startDate:completedDate,endDate:completedDate,
       startTime:completedTime,endTime:minutesToHHMM(timeToMinutes(completedTime)+30),
       calColor:C.green,calName:"Tâches",completedAt,
     };
-    setEvents(prev=>[...prev,doneEv]);
+    // 1. Calcul atomique
+    const updatedTasks=tasks.map(t=>t.id===task.id?{...t,done:true,completedAt}:t);
+    const updatedEvents=[...events,doneEv];
+    // 2. localStorage EN PREMIER — jamais perdu même si réseau coupe
+    save("cf_tasks",updatedTasks);
+    save("cf_events",updatedEvents);
+    // 3. UI
+    setTasks(updatedTasks);
+    setEvents(updatedEvents);
+    // 4. Haptic + toast
+    if(navigator.vibrate) navigator.vibrate([10,50,20]);
+    const toast=document.createElement("div");
+    toast.textContent="✓ Tâche terminée !";
+    toast.style.cssText=`position:fixed;top:80px;left:50%;transform:translateX(-50%);background:${C.green};color:#fff;padding:10px 20px;border-radius:20px;font-size:14px;font-weight:700;font-family:Phenomena,sans-serif;z-index:9999;`;
+    document.body.appendChild(toast);
+    setTimeout(()=>toast.remove(),2000);
   }
 
+  // ── CORRECTION — deleteTask atomique ──
   function deleteTask(task){
-    setTasks(prev=>prev.filter(t=>t.id!==task.id));
+    const updatedTasks=tasks.filter(t=>t.id!==task.id);
+    save("cf_tasks",updatedTasks);
+    setTasks(updatedTasks);
   }
 
   function handleTouchStart(e){ touchStartX.current=e.touches[0].clientX; touchStartY.current=e.touches[0].clientY; }
