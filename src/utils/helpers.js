@@ -15,6 +15,7 @@ export const todayISO = () => toISO(new Date());
 
 export function getWeekStart(date) {
   const d = new Date(date);
+  d.setHours(12, 0, 0, 0);
   const day = d.getDay();
   d.setDate(d.getDate() - ((day + 6) % 7));
   d.setHours(0, 0, 0, 0);
