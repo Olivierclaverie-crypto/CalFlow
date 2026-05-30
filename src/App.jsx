@@ -60,6 +60,7 @@ function layoutEvents(dayEvs) {
   return result;
 }
 
+// Semaine ISO — commence Lundi
 function getWeekNum(date) {
   const d = new Date(date);
   d.setHours(0,0,0,0);
@@ -114,7 +115,7 @@ function EventForm({ initial, calendars, onSave, onCancel, defaultCalHref }) {
         </select>
       </div>
       <div>
-        <label style={{fontSize:11,color:C.muted,fontWeight:700,display:"block",marginBottom:4}}>RÉCURRENCE <button onClick={()=>alert("🔁 Récurrence vs Tâche glissante\n\nLa RÉCURRENCE recrée l'événement à la fréquence choisie.\n\nLa TÂCHE GLISSANTE glisse au lendemain si non faite.")} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"50%",width:16,height:16,fontSize:10,cursor:"pointer",color:C.muted}}>?</button></label>
+        <label style={{fontSize:11,color:C.muted,fontWeight:700,display:"block",marginBottom:4}}>RÉCURRENCE <button onClick={()=>alert("Récurrence vs Tâche glissante\n\nLa RÉCURRENCE recrée l'événement à la fréquence choisie.\n\nLa TÂCHE GLISSANTE glisse au lendemain si non faite.")} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"50%",width:16,height:16,fontSize:10,cursor:"pointer",color:C.muted}}>?</button></label>
         <select value={rrule} onChange={e=>setRrule(e.target.value)} style={iStyle}>
           {RECURRENCE_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -168,7 +169,7 @@ function TaskForm({ initial, onSave, onCancel }) {
       <label style={{fontSize:11,color:C.muted,fontWeight:700,letterSpacing:.5}}>ÉCHÉANCE (OPTIONNEL)</label>
       <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={iStyle}/>
       <label style={{fontSize:11,color:C.muted,fontWeight:700,letterSpacing:.5,display:"flex",alignItems:"center",gap:6}}>RÉCURRENCE
-        <button onClick={()=>alert("🔁 Récurrence vs Tâche glissante\n\nLa RÉCURRENCE recrée la tâche à la fréquence choisie.\n\nLa TÂCHE GLISSANTE glisse au lendemain si non faite.")} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"50%",width:16,height:16,fontSize:10,cursor:"pointer",color:C.muted}}>?</button>
+        <button onClick={()=>alert("Récurrence vs Tâche glissante\n\nLa RÉCURRENCE recrée la tâche à la fréquence choisie.\n\nLa TÂCHE GLISSANTE glisse au lendemain si non faite.")} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"50%",width:16,height:16,fontSize:10,cursor:"pointer",color:C.muted}}>?</button>
       </label>
       <select value={recurrence} onChange={e=>setRecur(e.target.value)} style={iStyle}>
         <option value="none">Aucune</option>
@@ -203,20 +204,13 @@ function EventPopover({ ev, onInfo, onShare, onDelete, onClose, position }) {
         padding:"10px 14px",
         minWidth:160,
       }}>
-        <div style={{
-          position:"absolute", bottom:-8, left:"50%",
-          transform:"translateX(-50%)",
-          width:0, height:0,
-          borderLeft:"8px solid transparent",
-          borderRight:"8px solid transparent",
-          borderTop:`8px solid ${isPending?"#F5A623":C.border}`,
-        }}/>
+        <div style={{position:"absolute",bottom:-8,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"8px solid transparent",borderRight:"8px solid transparent",borderTop:`8px solid ${isPending?"#F5A623":C.border}`}}/>
         <div style={{fontSize:12,fontWeight:800,color:isPending?"#B8741A":C.ink,marginBottom:8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}}>
           {isPending&&<span style={{marginRight:4}}>🟠</span>}{ev.title}
         </div>
         <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-          <button onClick={onInfo} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}}>ℹ️</button>
-          <button onClick={onShare} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}}>↗️</button>
+          <button onClick={onInfo}   style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}}>ℹ️</button>
+          <button onClick={onShare}  style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}}>↗️</button>
           <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}}>🗑️</button>
         </div>
       </div>
@@ -278,13 +272,19 @@ export default function App() {
   const [popover,setPopover]       = useState(null);
   const [fraisDate,setFraisDate]   = useState(null);
   const [nomadBookOpen,setNomadBookOpen] = useState(false);
+
+  // ── Animation tourne-page ──────────────────────────────────────────────────
+  const [pageAnim, setPageAnim]   = useState(null); // "left" | "right" | null
+  const [displayWeek, setDisplayWeek] = useState(()=>getWeekStart(new Date()));
+
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const gridScrollRef = useRef(null);
 
-  const weekDays = getWeekDays(weekStart);
-  const weekNum = getWeekNum(weekStart);
-  const today = todayISO();
+  // weekStart = semaine affichée réelle, displayWeek = pour l'animation
+  const weekDays = getWeekDays(displayWeek);
+  const weekNum  = getWeekNum(displayWeek);
+  const today    = todayISO();
 
   useEffect(()=>{
     if(gridScrollRef.current){
@@ -332,6 +332,47 @@ export default function App() {
     }
   },[auth]);
 
+  // ── Changement de semaine avec animation tourne-page ──────────────────────
+  function navigateWeek(dir) {
+    // dir: +1 = suivante (swipe gauche), -1 = précédente (swipe droite)
+    const animClass = dir > 0 ? "left" : "right";
+    setPageAnim(animClass);
+    setTimeout(()=>{
+      const n = new Date(displayWeek);
+      n.setDate(n.getDate() + dir * 7);
+      setDisplayWeek(n);
+      setWeekStart(n);
+      setPageAnim(null);
+    }, 350);
+  }
+
+  function handleGoToDate(date){
+    const newWeek = getWeekStart(date);
+    const dir = newWeek > displayWeek ? 1 : -1;
+    setPageAnim(dir > 0 ? "left" : "right");
+    setTimeout(()=>{
+      setDisplayWeek(newWeek);
+      setWeekStart(newWeek);
+      setCurrentView("week");
+      setPageAnim(null);
+    }, 350);
+  }
+
+  function handleTouchStart(e){
+    touchStartX.current=e.touches[0].clientX;
+    touchStartY.current=e.touches[0].clientY;
+  }
+  function handleTouchEnd(e){
+    if(!touchStartX.current) return;
+    const dx=e.changedTouches[0].clientX-touchStartX.current;
+    const dy=Math.abs(e.changedTouches[0].clientY-touchStartY.current);
+    if(Math.abs(dx)>50&&dy<80){
+      if(dx<0) navigateWeek(+1);
+      else     navigateWeek(-1);
+    }
+    touchStartX.current=null;
+  }
+
   async function syncCalDAV(){
     if(!auth) return;
     setSyncing(true);
@@ -373,11 +414,6 @@ export default function App() {
     save("cf_auth",authObj);
   }
 
-  function handleGoToDate(date){
-    setWeekStart(getWeekStart(date));
-    setCurrentView("week");
-  }
-
   function doneTask(task){
     const completedAt=new Date().toISOString();
     const completedDate=toISO(new Date());
@@ -414,28 +450,29 @@ export default function App() {
     else setConfirmDel({...ev,_plan:"abo2"});
   }
 
-  function handleTouchStart(e){ touchStartX.current=e.touches[0].clientX; touchStartY.current=e.touches[0].clientY; }
-  function handleTouchEnd(e){
-    if(!touchStartX.current) return;
-    const dx=e.changedTouches[0].clientX-touchStartX.current;
-    const dy=Math.abs(e.changedTouches[0].clientY-touchStartY.current);
-    if(Math.abs(dx)>50&&dy<60){
-      if(dx<0){const n=new Date(weekStart);n.setDate(n.getDate()+7);setWeekStart(n);}
-      else{const n=new Date(weekStart);n.setDate(n.getDate()-7);setWeekStart(n);}
-    }
-    touchStartX.current=null;
-  }
-
   if(!auth) return <LoginScreen onLogin={handleLogin}/>;
   if(screen==="settings") return <Settings settings={settings} setSettings={setSettings} calendars={calendars} onBack={()=>setScreen("main")} auth={auth}/>;
 
   const syntheseEvs=SYNTHESE_DEADLINES.map(s=>({id:`synth-${s.id}`,type:"event",allDay:true,title:s.label,startDate:s.date,endDate:s.date,calColor:"#2d7a4f",calName:"Synthèse"}));
   const allEvs=[...events,...syntheseEvs];
 
+  // ── Style animation tourne-page ───────────────────────────────────────────
+  const pageStyle = {
+    flex:1, overflowY:"auto", position:"relative",
+    transformOrigin: pageAnim==="left" ? "left center" : "right center",
+    transition: pageAnim ? "transform 0.35s cubic-bezier(.4,0,.2,1), opacity 0.35s" : "none",
+    transform: pageAnim==="left"
+      ? "perspective(1200px) rotateY(-15deg) scale(0.97)"
+      : pageAnim==="right"
+      ? "perspective(1200px) rotateY(15deg) scale(0.97)"
+      : "perspective(1200px) rotateY(0deg) scale(1)",
+    opacity: pageAnim ? 0.6 : 1,
+    boxShadow: pageAnim ? "0 8px 40px rgba(0,0,0,.18)" : "none",
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:C.bg,overflow:"hidden",fontFamily:"Phenomena,Nunito,sans-serif"}}>
 
-      {/* ── NomadBook en plein écran ── */}
       {nomadBookOpen&&(
         <div style={{position:"fixed",inset:0,zIndex:400,background:C.bg,overflowY:"auto"}}>
           <NomadBook onClose={()=>setNomadBookOpen(false)}/>
@@ -453,12 +490,12 @@ export default function App() {
         onClearClipboard={()=>{setClipboard(null);setPasteTarget(null);}}
         tasks={tasks}
         onToggleDrawer={()=>setDrawerOpen(o=>!o)}
-        weekStart={weekStart}
+        weekStart={displayWeek}
         weekNum={weekNum}
         today={today}
         fmtDay={fmtDay}
         fmtDayNum={fmtDayNum}
-        onToday={()=>{setWeekStart(getWeekStart(new Date()));setCurrentView("week");}}
+        onToday={()=>{ navigateWeek(0); const n=getWeekStart(new Date()); setDisplayWeek(n); setWeekStart(n); setCurrentView("week"); }}
         onGoToDate={handleGoToDate}
         onChangeView={setCurrentView}
         onOpenFrais={date=>setFraisDate(date)}
@@ -485,9 +522,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Grille horaire */}
-      <div ref={gridScrollRef} style={{flex:1,overflowY:"auto",position:"relative"}}
-        onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      {/* ── Grille avec animation tourne-page ── */}
+      <div
+        ref={gridScrollRef}
+        style={pageStyle}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div style={{display:"flex",height:GRID_H,position:"relative"}}>
           <div style={{width:36,flexShrink:0}}>
             {Array.from({length:24},(_,h)=>(
@@ -524,11 +565,7 @@ export default function App() {
                     <div key={ev.id+ev.col}
                       onClick={e=>{
                         e.stopPropagation();
-                        if(isTask){
-                          setDrawerOpen(false);
-                          setTimeout(()=>setDetailEv({...ev,type:"task"}),50);
-                          return;
-                        }
+                        if(isTask){setDrawerOpen(false);setTimeout(()=>setDetailEv({...ev,type:"task"}),50);return;}
                         const rect=e.currentTarget.getBoundingClientRect();
                         setPopover({ev,x:rect.left+rect.width/2-80,y:rect.top-80});
                       }}
@@ -609,7 +646,7 @@ export default function App() {
         </div>}
       </Modal>
 
-      <Modal open={!!confirmDel} onClose={()=>setConfirmDel(null)} title="🗑 Confirmer la suppression">
+      <Modal open={!!confirmDel} onClose={()=>setConfirmDel(null)} title="Confirmer la suppression">
         {confirmDel&&<div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{fontSize:14,color:C.muted}}>Supprimer <strong>{confirmDel.title}</strong> ?</div>
           {confirmDel._plan==="abo1"&&(
@@ -626,7 +663,7 @@ export default function App() {
               Voulez-vous prévenir le contact et rechercher un nouveau créneau ?
               <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
                 <Btn variant="soft" onClick={()=>{if(navigator.share)navigator.share({title:`Annulation — ${confirmDel.title}`,text:`Bonjour, je dois annuler notre RDV du ${confirmDel.startDate}. Je vous propose un nouveau créneau très bientôt.`});}}>📱 Prévenir</Btn>
-                <Btn variant="soft" onClick={()=>alert("🤖 Recherche IA d'un nouveau créneau — bientôt disponible !")}>🤖 Nouveau créneau</Btn>
+                <Btn variant="soft" onClick={()=>alert("Recherche IA d'un nouveau créneau — bientôt disponible !")}>🤖 Nouveau créneau</Btn>
                 <Btn variant="outline">Passer</Btn>
               </div>
             </div>
@@ -661,7 +698,7 @@ export default function App() {
         </div>}
       </Modal>
 
-      <Modal open={!!fraisDate} onClose={()=>setFraisDate(null)} title={`💰 Frais du ${fraisDate||""}`}>
+      <Modal open={!!fraisDate} onClose={()=>setFraisDate(null)} title={`Frais du ${fraisDate||""}`}>
         <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:14}}>
           Module Frais — bientôt disponible en Premium 🚀
         </div>
