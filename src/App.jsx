@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, PRIORITY, SYNTHESE_DEADLINES, GRID_START, GRID_END, GRID_TOTAL, SLOT_H, GRID_H, GRID_DEFAULT_SCROLL, RECURRENCE_OPTIONS } from "./utils/constants.js";
 import { load, save, toISO, todayISO, getWeekStart, getWeekDays, fmtDay, fmtDayNum, fmtWeekRange, timeToMinutes, minutesToHHMM, timeToY, durationToH, slideTasksToToday, rruleToFr, makeAuthHeader } from "./utils/helpers.js";
 import { caldavRequest, parseCalendars, parseEvents, expandRecurring } from "./utils/caldav.js";
@@ -7,6 +7,9 @@ import Header from "./components/Header.jsx";
 import TaskDrawer from "./components/TaskDrawer.jsx";
 import LoginScreen from "./components/LoginScreen.jsx";
 import Settings from "./components/Settings.jsx";
+
+// ── Abonnement user (à connecter à StoreKit plus tard) ────────────────────────
+const USER_PLAN = "free"; // "free" | "abo1" | "abo2"
 
 async function pushEvent(ev, auth) {
   if (!auth || !ev.calHref) return;
@@ -55,6 +58,15 @@ function layoutEvents(dayEvs) {
     ev.totalCols = overlapping.length + 1;
   });
   return result;
+}
+
+// ── Numéro de semaine ISO ─────────────────────────────────────────────────────
+function getWeekNum(date) {
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 3 - (d.getDay()+6)%7);
+  const week1 = new Date(d.getFullYear(),0,4);
+  return 1 + Math.round(((d-week1)/86400000 - 3 + (week1.getDay()+6)%7)/7);
 }
 
 function EventForm({ initial, calendars, onSave, onCancel, defaultCalHref }) {
@@ -174,7 +186,49 @@ function TaskForm({ initial, onSave, onCancel }) {
   );
 }
 
-function EventDetail({ ev, onEdit, onDelete, onShare, onCopy, onDone }) {
+// ── Popover événement ─────────────────────────────────────────────────────────
+function EventPopover({ ev, onInfo, onShare, onDelete, onClose, position }) {
+  if (!ev || !position) return null;
+  const isPending = ev.status === "pending";
+  return (
+    <>
+      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:299}}/>
+      <div style={{
+        position:"fixed",
+        top: position.y,
+        left: Math.min(position.x, window.innerWidth - 180),
+        zIndex:300,
+        background: C.surface,
+        border:`1.5px solid ${isPending?"#F5A623":C.border}`,
+        borderRadius:12,
+        boxShadow:"0 4px 20px rgba(0,0,0,.18)",
+        padding:"10px 14px",
+        minWidth:160,
+      }}>
+        {/* Petite flèche */}
+        <div style={{
+          position:"absolute", bottom:-8, left:"50%",
+          transform:"translateX(-50%)",
+          width:0, height:0,
+          borderLeft:"8px solid transparent",
+          borderRight:"8px solid transparent",
+          borderTop:`8px solid ${isPending?"#F5A623":C.border}`,
+        }}/>
+        <div style={{fontSize:12,fontWeight:800,color:isPending?"#B8741A":C.ink,marginBottom:8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}}>
+          {isPending&&<span style={{marginRight:4}}>🟠</span>}{ev.title}
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+          <button onClick={onInfo} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}} title="Détail">ℹ️</button>
+          <button onClick={onShare} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}} title="Partager">↗️</button>
+          <button onClick={onDelete} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:4}} title="Supprimer">🗑️</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Détail événement/tâche ────────────────────────────────────────────────────
+function EventDetail({ ev, onEdit, onDelete, onCopy, onDone }) {
   if (!ev) return null;
   const isTask = ev.type === "task";
   const isSynthese = ev.id?.startsWith("synth-");
@@ -194,7 +248,6 @@ function EventDetail({ ev, onEdit, onDelete, onShare, onCopy, onDone }) {
       {!isSynthese&&<>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
           <Btn onClick={onEdit} variant="soft" style={{flex:1}}>✎ Modifier</Btn>
-          {!isTask&&<Btn onClick={onShare} variant="outline" style={{flex:1}}>↗ Partager</Btn>}
           <Btn onClick={onDelete} variant="danger" style={{flex:1}}>🗑 Supprimer</Btn>
         </div>
         {!isTask&&<Btn onClick={onCopy} variant="gold" style={{width:"100%",justifyContent:"center",display:"flex"}}>📋 Copier cet événement</Btn>}
@@ -204,6 +257,7 @@ function EventDetail({ ev, onEdit, onDelete, onShare, onCopy, onDone }) {
   );
 }
 
+// ── App principale ────────────────────────────────────────────────────────────
 export default function App() {
   const [auth,setAuth]             = useState(()=>load("cf_auth",null));
   const [events,setEvents]         = useState(()=>load("cf_events",[]));
@@ -212,6 +266,7 @@ export default function App() {
   const [settings,setSettings]     = useState(()=>load("cf_settings",{startHour:"8",endHour:"20",showDone:false}));
   const [weekStart,setWeekStart]   = useState(()=>getWeekStart(new Date()));
   const [screen,setScreen]         = useState("main");
+  const [currentView,setCurrentView] = useState("week");
   const [syncing,setSyncing]       = useState(false);
   const [syncOk,setSyncOk]         = useState(true);
   const [formOpen,setFormOpen]     = useState(false);
@@ -225,12 +280,15 @@ export default function App() {
   const [confirmDone,setConfirmDone] = useState(null);
   const [drawerOpen,setDrawerOpen] = useState(false);
   const [swipeTaskId,setSwipeTaskId] = useState(null);
+  const [popover,setPopover]       = useState(null); // {ev, x, y}
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const gridScrollRef = useRef(null);
 
   const weekDays = getWeekDays(weekStart);
+  const weekNum = getWeekNum(weekStart);
 
+  // Scroll initial 12h
   useEffect(()=>{
     if(gridScrollRef.current){
       const scrollTo=(GRID_DEFAULT_SCROLL/GRID_TOTAL)*GRID_H;
@@ -318,7 +376,12 @@ export default function App() {
     save("cf_auth",authObj);
   }
 
-  // ── CORRECTION BUG GARE DU NORD — écriture atomique anti-perte réseau ──
+  function handleGoToDate(date){
+    setWeekStart(getWeekStart(date));
+    setCurrentView("week");
+  }
+
+  // ── doneTask — écriture atomique anti-perte réseau ────────────────────────
   function doneTask(task){
     const completedAt=new Date().toISOString();
     const completedDate=toISO(new Date());
@@ -329,16 +392,12 @@ export default function App() {
       startTime:completedTime,endTime:minutesToHHMM(timeToMinutes(completedTime)+30),
       calColor:C.green,calName:"Tâches",completedAt,
     };
-    // 1. Calcul atomique
     const updatedTasks=tasks.map(t=>t.id===task.id?{...t,done:true,completedAt}:t);
     const updatedEvents=[...events,doneEv];
-    // 2. localStorage EN PREMIER — jamais perdu même si réseau coupe
     save("cf_tasks",updatedTasks);
     save("cf_events",updatedEvents);
-    // 3. UI
     setTasks(updatedTasks);
     setEvents(updatedEvents);
-    // 4. Haptic + toast
     if(navigator.vibrate) navigator.vibrate([10,50,20]);
     const toast=document.createElement("div");
     toast.textContent="✓ Tâche terminée !";
@@ -347,11 +406,21 @@ export default function App() {
     setTimeout(()=>toast.remove(),2000);
   }
 
-  // ── CORRECTION — deleteTask atomique ──
   function deleteTask(task){
     const updatedTasks=tasks.filter(t=>t.id!==task.id);
     save("cf_tasks",updatedTasks);
     setTasks(updatedTasks);
+  }
+
+  // ── Suppression événement selon abonnement ────────────────────────────────
+  function handleDeleteEvent(ev){
+    if(USER_PLAN==="free"){
+      setConfirmDel(ev);
+    } else if(USER_PLAN==="abo1"){
+      setConfirmDel({...ev, _plan:"abo1"});
+    } else {
+      setConfirmDel({...ev, _plan:"abo2"});
+    }
   }
 
   function handleTouchStart(e){ touchStartX.current=e.touches[0].clientX; touchStartY.current=e.touches[0].clientY; }
@@ -375,25 +444,44 @@ export default function App() {
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:C.bg,overflow:"hidden",fontFamily:"Phenomena,Nunito,sans-serif"}}>
-      <Header weekDays={weekDays} syncing={syncing} syncOk={syncOk} onSync={syncCalDAV} onSettings={()=>setScreen("settings")} onAddEvent={()=>{setEditEv(null);setFormOpen(true);}} clipboard={clipboard} onClearClipboard={()=>{setClipboard(null);setPasteTarget(null);}} tasks={tasks} onToggleDrawer={()=>setDrawerOpen(o=>!o)} weekStart={weekStart} onToday={()=>setWeekStart(getWeekStart(new Date()))} fmtWeekRange={fmtWeekRange}/>
 
+      <Header
+        weekDays={weekDays}
+        syncing={syncing}
+        syncOk={syncOk}
+        onSync={syncCalDAV}
+        onSettings={()=>setScreen("settings")}
+        onAddEvent={()=>{setEditEv(null);setFormOpen(true);}}
+        clipboard={clipboard}
+        onClearClipboard={()=>{setClipboard(null);setPasteTarget(null);}}
+        tasks={tasks}
+        onToggleDrawer={()=>setDrawerOpen(o=>!o)}
+        weekStart={weekStart}
+        weekNum={weekNum}
+        onToday={()=>{setWeekStart(getWeekStart(new Date()));setCurrentView("week");}}
+        onGoToDate={handleGoToDate}
+        onChangeView={setCurrentView}
+        currentView={currentView}
+        fmtWeekRange={fmtWeekRange}
+      />
+
+      {/* En-tête jours — sans points bleus */}
       <div style={{display:"flex",background:C.surface,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
         <div style={{width:36,flexShrink:0}}/>
         {weekDays.map(day=>{
           const isToday=day===today;
-          const hasDot=allEvs.some(e=>e.startDate===day||e.endDate===day);
           return(
             <div key={day} style={{flex:1,textAlign:"center",padding:"6px 0 4px"}}>
               <div style={{fontSize:10,color:isToday?C.accent:C.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{fmtDay(day)}</div>
               <div style={{width:28,height:28,borderRadius:"50%",background:isToday?C.accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",margin:"2px auto"}}>
                 <span style={{fontSize:14,fontWeight:700,color:isToday?"#fff":C.ink}}>{fmtDayNum(day)}</span>
               </div>
-              {hasDot&&<div style={{width:4,height:4,borderRadius:"50%",background:C.accent,margin:"0 auto"}}/>}
             </div>
           );
         })}
       </div>
 
+      {/* Bannières all-day */}
       {allEvs.some(e=>e.allDay&&weekDays.some(d=>d>=e.startDate&&d<=e.endDate))&&(
         <div style={{display:"flex",background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"4px 0",flexShrink:0}}>
           <div style={{width:36,flexShrink:0,fontSize:9,color:C.muted,textAlign:"center",paddingTop:4}}>Jour<br/>entier</div>
@@ -412,24 +500,29 @@ export default function App() {
         </div>
       )}
 
+      {/* Grille horaire */}
       <div ref={gridScrollRef} style={{flex:1,overflowY:"auto",position:"relative"}}
         onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div style={{display:"flex",height:GRID_H,position:"relative"}}>
+
+          {/* Heures */}
           <div style={{width:36,flexShrink:0}}>
             {Array.from({length:24},(_,h)=>(
               <div key={h} style={{position:"absolute",top:(h*60/GRID_TOTAL)*GRID_H,left:0,width:36,fontSize:9,color:C.muted,textAlign:"right",paddingRight:4,fontFamily:"monospace"}}>{h}h</div>
             ))}
           </div>
+
+          {/* Colonnes jours */}
           {weekDays.map(day=>{
             const isToday=day===today;
             const caldavEvs=allEvs.filter(e=>!e.allDay&&(e.startDate===day||(!e.isRecurring&&e.startDate<=day&&(e.endDate||e.startDate)>=day)));
-            const dayTasks=tasks.filter(t=>(t.effectiveDate||t.createdAt?.slice(0,10))===day&&!t.done);
             const doneTasks=tasks.filter(t=>t.done&&t.startDate===day);
             const dayEvs=[...caldavEvs,...doneTasks];
             const nowPct=isToday?(new Date().getHours()*60+new Date().getMinutes())/GRID_TOTAL:null;
             return(
-              <div key={day} style={{flex:1,borderLeft:`0.5px solid ${C.border}`,position:"relative",background:isToday?"#2B5A9E08":"transparent"}}
+              <div key={day} style={{flex:1,borderLeft:`1px solid ${C.border}`,position:"relative",background:isToday?"#2B5A9E08":"transparent"}}
                 onClick={e=>{
+                  if(popover){setPopover(null);return;}
                   const rect=e.currentTarget.getBoundingClientRect();
                   const relY=e.clientY-rect.top;
                   const min=Math.round((relY/GRID_H)*GRID_TOTAL/30)*30;
@@ -437,27 +530,55 @@ export default function App() {
                   if(clipboard){setPasteTarget({date:day,time});}
                   else{setEditEv(null);setFormOpen(true);}
                 }}>
-                {Array.from({length:24},(_,h)=>(
-                  <div key={h} style={{position:"absolute",top:(h*60/GRID_TOTAL)*GRID_H,left:0,right:0,borderTop:h%1===0?`0.5px solid ${C.border}`:"none"}}/>
-                ))}
+
+                {/* Lignage vertical uniquement — pas de horizontal */}
                 {nowPct&&<div style={{position:"absolute",top:`${nowPct*100}%`,left:0,right:0,height:2,background:C.red,zIndex:10}}><div style={{position:"absolute",left:-4,top:-3,width:8,height:8,borderRadius:"50%",background:C.red}}/></div>}
+
+                {/* Événements — bordure 2px stylo feutre, sans remplissage */}
                 {layoutEvents(dayEvs).map(ev=>{
                   const y=timeToY(ev.startTime||"09:00");
                   const h=Math.max(20,durationToH(ev.startTime||"09:00",ev.endTime||"10:00"));
                   const isTask=ev.type==="task";
+                  const isPending=ev.status==="pending";
                   const evColor=isTask?C.gold:(ev.calColor||C.accent);
-                  const bg=isTask?C.goldLight:evColor;
-                  function isLight(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return(r*299+g*587+b*114)/1000>128;}
-                  const textC=isTask?C.goldDark:(isLight(evColor)?"#0F1D2B":"#ffffff");
                   const colW=100/(ev.totalCols||1);
                   const leftPct=(ev.col||0)*colW;
+
                   return(
                     <div key={ev.id+ev.col}
-                      onClick={e=>{e.stopPropagation();setDetailEv(ev);}}
-                      onDoubleClick={e=>{e.stopPropagation();setClipboard(ev);const t=document.createElement("div");t.textContent="📋 Copié !";t.style.cssText="position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#0F1D2B;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;z-index:999;font-family:inherit";document.body.appendChild(t);setTimeout(()=>t.remove(),2000);}}
-                      style={{position:"absolute",top:y+1,left:`${leftPct+0.5}%`,width:`${colW-1}%`,height:h-2,background:bg,border:`1.5px solid ${ev.status==="pending"?"#F5A623":evColor}`,borderRadius:6,padding:"3px 4px",cursor:"pointer",overflow:"hidden",opacity:ev.done?.6:1,transition:"opacity .2s",borderLeft:`3px solid ${ev.status==="pending"?"#F5A623":evColor}`,boxSizing:"border-box"}}>
-                      {ev.status==="pending"&&<div style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"#F5A623"}}/>}
-                      <div style={{fontSize:10,fontWeight:800,color:textC,lineHeight:1.3,textDecoration:ev.done?"line-through":"none"}}>
+                      onClick={e=>{
+                        e.stopPropagation();
+                        if(isTask){
+                          setDrawerOpen(false);
+                          setTimeout(()=>setDetailEv({...ev,type:"task"}),50);
+                          return;
+                        }
+                        // Popover sur l'événement
+                        const rect=e.currentTarget.getBoundingClientRect();
+                        setPopover({
+                          ev,
+                          x: rect.left + rect.width/2 - 80,
+                          y: rect.top - 80,
+                        });
+                      }}
+                      style={{
+                        position:"absolute",
+                        top:y+1,
+                        left:`${leftPct+0.5}%`,
+                        width:`${colW-1}%`,
+                        height:h-2,
+                        // Bordure 2px stylo feutre — sans remplissage sauf tâches terminées
+                        background: isTask ? (ev.done ? C.green+"22" : C.gold+"15") : "transparent",
+                        border:`2px solid ${isPending?"#F5A623":evColor}`,
+                        borderRadius:6,
+                        padding:"3px 4px",
+                        cursor:"pointer",
+                        overflow:"hidden",
+                        opacity:ev.done?.7:1,
+                        boxSizing:"border-box",
+                      }}>
+                      {isPending&&<div style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"#F5A623"}}/>}
+                      <div style={{fontSize:10,fontWeight:800,color:isPending?"#B8741A":evColor,lineHeight:1.3,textDecoration:ev.done?"line-through":"none"}}>
                         {isTask&&<span style={{marginRight:2}}>{ev.done?"✓ ":"↻ "}</span>}
                         <span style={{fontSize:10,opacity:.9}}>{ev.startTime} </span>
                         <span style={{wordBreak:"break-word",whiteSpace:"pre-wrap"}}>{ev.title}</span>
@@ -471,7 +592,19 @@ export default function App() {
         </div>
       </div>
 
-      {/* Tiroir tâches — correction bug écran blanc */}
+      {/* Popover événement */}
+      {popover&&(
+        <EventPopover
+          ev={popover.ev}
+          position={{x:popover.x, y:popover.y}}
+          onClose={()=>setPopover(null)}
+          onInfo={()=>{setDetailEv(popover.ev);setPopover(null);}}
+          onShare={()=>{if(navigator.share)navigator.share({title:popover.ev.title,text:`${popover.ev.startDate} ${popover.ev.startTime||""} — ${popover.ev.title}`});setPopover(null);}}
+          onDelete={()=>{handleDeleteEvent(popover.ev);setPopover(null);}}
+        />
+      )}
+
+      {/* Tiroir tâches */}
       <TaskDrawer
         tasks={tasks}
         drawerOpen={drawerOpen}
@@ -487,18 +620,27 @@ export default function App() {
         onAddTask={()=>setTaskFormOpen(true)}
       />
 
+      {/* Modal création événement */}
       <Modal open={formOpen} onClose={()=>{setFormOpen(false);setEditEv(null);}} title={editEv?"Modifier l'événement":"+ Nouvel événement"}>
         <EventForm initial={editEv} calendars={calendars} defaultCalHref={settings.defaultCalHref} onCancel={()=>{setFormOpen(false);setEditEv(null);}} onSave={async ev=>{const newEv={...ev,id:editEv?.id||`calflow-${Date.now()}`,calColor:calendars.find(c=>c.href===ev.calHref)?.color||C.accent,calName:calendars.find(c=>c.href===ev.calHref)?.displayName||"",type:"event"};setEvents(prev=>editEv?prev.map(e=>e.id===editEv.id?newEv:e):[...prev,newEv]);await pushEvent(newEv,auth);setFormOpen(false);setEditEv(null);}}/>
       </Modal>
 
+      {/* Modal création tâche */}
       <Modal open={taskFormOpen} onClose={()=>{setTaskFormOpen(false);setEditTask(null);}} title={editTask?"Modifier la tâche":"↻ Nouvelle tâche glissante"}>
         <TaskForm initial={editTask} onCancel={()=>{setTaskFormOpen(false);setEditTask(null);}} onSave={task=>{setTasks(prev=>editTask?prev.map(t=>t.id===editTask.id?{...task,id:editTask.id}:t):[...prev,task]);setTaskFormOpen(false);setEditTask(null);}}/>
       </Modal>
 
+      {/* Modal détail */}
       <Modal open={!!detailEv} onClose={()=>setDetailEv(null)} title={detailEv?.type==="task"?"Tâche glissante":"Événement"}>
-        <EventDetail ev={detailEv} onEdit={()=>{if(detailEv?.type==="task"){setEditTask(detailEv);setTaskFormOpen(true);}else{setEditEv(detailEv);setFormOpen(true);}setDetailEv(null);}} onDelete={()=>{setConfirmDel(detailEv);setDetailEv(null);}} onShare={()=>{if(navigator.share)navigator.share({title:detailEv?.title,text:`${detailEv?.startDate} ${detailEv?.startTime||""} — ${detailEv?.title}`});}} onCopy={()=>{setClipboard(detailEv);setDetailEv(null);}} onDone={()=>{setConfirmDone(detailEv);setDetailEv(null);}}/>
+        <EventDetail ev={detailEv}
+          onEdit={()=>{if(detailEv?.type==="task"){setEditTask(detailEv);setTaskFormOpen(true);}else{setEditEv(detailEv);setFormOpen(true);}setDetailEv(null);}}
+          onDelete={()=>{handleDeleteEvent(detailEv);setDetailEv(null);}}
+          onCopy={()=>{setClipboard(detailEv);setDetailEv(null);}}
+          onDone={()=>{setConfirmDone(detailEv);setDetailEv(null);}}
+        />
       </Modal>
 
+      {/* Modal confirmation terminée */}
       <Modal open={!!confirmDone} onClose={()=>setConfirmDone(null)} title="✓ Confirmer la validation">
         {confirmDone&&<div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{background:C.bg,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.border}`}}>
@@ -512,9 +654,34 @@ export default function App() {
         </div>}
       </Modal>
 
+      {/* Modal suppression — 3 niveaux abonnement */}
       <Modal open={!!confirmDel} onClose={()=>setConfirmDel(null)} title="🗑 Confirmer la suppression">
         {confirmDel&&<div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{fontSize:14,color:C.muted}}>Supprimer <strong>{confirmDel.title}</strong> ?</div>
+
+          {/* Abo1 — proposer de prévenir le contact */}
+          {confirmDel._plan==="abo1"&&(
+            <div style={{background:C.accentLight,borderRadius:10,padding:"10px 14px",border:`1px solid ${C.accentBorder}`,fontSize:13,color:C.accent}}>
+              Voulez-vous prévenir le contact ?
+              <div style={{display:"flex",gap:8,marginTop:8}}>
+                <Btn variant="soft" onClick={()=>{if(navigator.share)navigator.share({title:`Annulation — ${confirmDel.title}`,text:`Bonjour, je dois annuler notre RDV du ${confirmDel.startDate}.`});}}>📱 Prévenir</Btn>
+                <Btn variant="outline" onClick={()=>{}}>Passer</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Abo2 — prévenir + rechercher créneau */}
+          {confirmDel._plan==="abo2"&&(
+            <div style={{background:C.accentLight,borderRadius:10,padding:"10px 14px",border:`1px solid ${C.accentBorder}`,fontSize:13,color:C.accent}}>
+              Voulez-vous prévenir le contact et rechercher un nouveau créneau ?
+              <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                <Btn variant="soft" onClick={()=>{if(navigator.share)navigator.share({title:`Annulation — ${confirmDel.title}`,text:`Bonjour, je dois annuler notre RDV du ${confirmDel.startDate}. Je vous propose un nouveau créneau très bientôt.`});}}>📱 Prévenir</Btn>
+                <Btn variant="soft" onClick={()=>alert("🤖 Recherche IA d'un nouveau créneau — bientôt disponible !")}>🤖 Nouveau créneau</Btn>
+                <Btn variant="outline" onClick={()=>{}}>Passer</Btn>
+              </div>
+            </div>
+          )}
+
           <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
             <Btn onClick={()=>setConfirmDel(null)}>Annuler</Btn>
             <Btn variant="danger" onClick={async()=>{
@@ -526,6 +693,7 @@ export default function App() {
         </div>}
       </Modal>
 
+      {/* Modal coller événement */}
       <Modal open={!!clipboard&&!!pasteTarget} onClose={()=>setPasteTarget(null)} title="📋 Coller l'événement">
         {clipboard&&pasteTarget&&<div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{background:C.bg,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.border}`}}>
@@ -544,6 +712,7 @@ export default function App() {
           </div>
         </div>}
       </Modal>
+
     </div>
   );
 }
