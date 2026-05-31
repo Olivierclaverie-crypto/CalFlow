@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from "fs";
 function swVersionPlugin() {
   return {
     name: "sw-version",
-    buildStart() {
+    config() {
       const swPath = "./public/sw.js";
       let sw = readFileSync(swPath, "utf-8");
       sw = sw.replace(/__TIMESTAMP__/, Date.now());
