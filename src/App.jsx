@@ -12,12 +12,23 @@ import NomadBook from "./components/NomadBook.jsx";
 const USER_PLAN = "free";
 
 // ── Email propriétaire — SYNTHESE_DEADLINES visibles uniquement pour lui ──────
-const OWNER_EMAIL = "olivierclaverie@icloud.com";
+const OWNER_EMAIL = "olivierclaverie@me.com";
 
 // ── Préfixage clés localStorage par user ──────────────────────────────────────
+// Format : nompartie@email + JJMMAAAA de 1ère connexion → ex: olivierclaverie31052026_
 function userPrefix(email) {
   if (!email) return "";
-  return email.split("@")[0].slice(0,8).replace(/[^a-z0-9]/gi,"_") + "_";
+  const name = email.split("@")[0].replace(/[^a-z0-9]/gi,"").toLowerCase();
+  const storageKey = "user_created_" + name;
+  let date = localStorage.getItem(storageKey);
+  if (!date) {
+    const now = new Date();
+    date = String(now.getDate()).padStart(2,"0")
+         + String(now.getMonth()+1).padStart(2,"0")
+         + now.getFullYear();
+    localStorage.setItem(storageKey, date);
+  }
+  return name + date + "_";
 }
 function uKey(email, key) {
   // cf_auth n'est jamais préfixé — clé globale de session
