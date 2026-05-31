@@ -25,6 +25,22 @@ function uKey(email, key) {
   return userPrefix(email) + key;
 }
 
+// ── Migration automatique anciennes clés → clés préfixées ─────────────────────
+// S'exécute silencieusement au 1er démarrage après MAJ — aucune action user requise
+function migrateOldKeys(email) {
+  if (!email) return;
+  const OLD_KEYS = ["cf_tasks","cf_events","cf_calendars","cf_settings"];
+  OLD_KEYS.forEach(key => {
+    const prefixed = uKey(email, key);
+    const oldData  = localStorage.getItem(key);
+    const newData  = localStorage.getItem(prefixed);
+    // Migrer seulement si l'ancienne clé existe et la nouvelle est vide
+    if (oldData && !newData) {
+      localStorage.setItem(prefixed, oldData);
+    }
+  });
+}
+
 async function pushEvent(ev, auth) {
   if (!auth || !ev.calHref) return;
   const uid = ev.id?.startsWith("calflow-") ? ev.id : `calflow-${Date.now()}@nomadcal`;
@@ -294,6 +310,8 @@ export default function App() {
   const today    = todayISO();
 
   useEffect(()=>{
+    // Migration silencieuse au premier démarrage
+    if (email) migrateOldKeys(email);
     if(gridScrollRef.current){
       gridScrollRef.current.scrollTop = (GRID_DEFAULT_SCROLL/GRID_TOTAL)*GRID_H;
     }
@@ -380,7 +398,9 @@ export default function App() {
   function handleLogin(email,password){
     const authObj={email,appPassword:password,auth:makeAuthHeader(email,password)};
     setAuth(authObj); save("cf_auth",authObj);
-    // Charger les données existantes de cet user
+    // Migration silencieuse des anciennes clés
+    migrateOldKeys(email);
+    // Charger les données de cet user
     setEvents(load(uKey(email,"cf_events"),[]));
     setTasks(load(uKey(email,"cf_tasks"),[]));
     setCalendars(load(uKey(email,"cf_calendars"),[]));
