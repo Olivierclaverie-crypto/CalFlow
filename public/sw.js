@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomadcal-v2';
+const CACHE_NAME = 'nomadcal-v__TIMESTAMP__';
 
 // Fichiers à précacher au démarrage
 const PRECACHE = [
