@@ -254,7 +254,7 @@ function PeriodCard({ p, status, notes, syntheReport, currentPeriodId, chapterCo
 
 export default function NomadBook({ onClose }){
   const [tab,setTab]               = useState("notes");
-  const [notes,setNotes]           = useState(()=>load("nf4_notes",[]));
+  const [notes,setNotes]           = useState(()=>{ const migrated=load("nf4_notes",null); if(migrated&&migrated.length>0&&!load("nb_notes",null)){ save("nb_notes",migrated); } return load("nb_notes",[]); });
   const [periods,setPeriods]       = useState(()=>load("nb_periods",DEFAULT_PERIODS));
   const [syntheses,setSyntheses]   = useState(()=>load("nb_syntheses",{})); // {periodId: {text, date}}
   const [captureOpen,setCaptureOpen]   = useState(false);
@@ -274,7 +274,7 @@ export default function NomadBook({ onClose }){
   const touchStartX    = useRef(null);
   const currentCardRef = useRef(null);
 
-  useEffect(()=>save("nf4_notes",notes),[notes]);
+  useEffect(()=>save("nb_notes",notes),[notes]);
   useEffect(()=>save("nb_periods",periods),[periods]);
   useEffect(()=>save("nb_syntheses",syntheses),[syntheses]);
   useEffect(()=>{ const h=e=>{if(e.ctrlKey&&e.key===" "){e.preventDefault();setCaptureOpen(true);}}; window.addEventListener("keydown",h); return()=>window.removeEventListener("keydown",h); },[]);
