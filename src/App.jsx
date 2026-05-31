@@ -8,6 +8,7 @@ import TaskDrawer from "./components/TaskDrawer.jsx";
 import LoginScreen from "./components/LoginScreen.jsx";
 import Settings from "./components/Settings.jsx";
 import NomadBook from "./components/NomadBook.jsx";
+import { checkCalendarExists, createCalendar, calendarDisplayName } from "./utils/caldavCalendar.js";
 
 const USER_PLAN = "free";
 
@@ -363,6 +364,27 @@ export default function App() {
     if(auth){ const t=setTimeout(()=>syncCalDAV(),300); return()=>clearTimeout(t); }
   },[auth]);
 
+  // ── Création silencieuse calendrier NomadCal au 1er login ─────────────────
+  useEffect(()=>{
+    if(!auth) return;
+    async function setupCalendar(){
+      try{
+        const exists = await checkCalendarExists(auth);
+        if(!exists){
+          const result = await createCalendar(auth);
+          if(result.success){
+            showToast(`📅 Calendrier ${calendarDisplayName(auth.email)} créé dans votre iCloud`, "green");
+          } else {
+            showToast("📅 NomadCal fonctionne en mode local — calendrier iCloud indisponible pour l'instant", "amber");
+          }
+        }
+      } catch {
+        // Silencieux — pas de blocage si erreur réseau
+      }
+    }
+    setupCalendar();
+  },[auth]);
+
   // ── Navigation semaine ────────────────────────────────────────────────────
   function handleTouchStart(e){ touchStartX.current=e.touches[0].clientX; touchStartY.current=e.touches[0].clientY; }
   function handleTouchEnd(e){
@@ -418,6 +440,16 @@ export default function App() {
     setSettings(load(uKey(email,"cf_settings"),{startHour:"8",endHour:"20",showDone:false}));
   }
 
+  // ── Toast générique ───────────────────────────────────────────────────────
+  function showToast(message, color="green") {
+    const bg = color==="green" ? C.green : color==="amber" ? C.amber : C.red;
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.cssText = `position:fixed;top:80px;left:50%;transform:translateX(-50%);background:${bg};color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:700;font-family:Phenomena,sans-serif;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.2);`;
+    document.body.appendChild(toast);
+    setTimeout(()=>toast.remove(), 3500);
+  }
+
   function doneTask(task){
     const completedAt=new Date().toISOString();
     const completedDate=toISO(new Date());
@@ -460,7 +492,7 @@ export default function App() {
 
       {nomadBookOpen&&(
         <div style={{position:"fixed",inset:0,zIndex:400,background:C.bg,overflowY:"auto"}}>
-          <NomadBook onClose={()=>setNomadBookOpen(false)}/>
+          <NomadBook onClose={()=>setNomadBookOpen(false)} auth={auth}/>
         </div>
       )}
 
