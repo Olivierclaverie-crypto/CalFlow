@@ -31,10 +31,13 @@ const ICONS = {
   outils:       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="10" rx="1.5" stroke="#2B5A9E" strokeWidth="1.5"/><rect x="4" y="6" width="12" height="6" rx=".5" fill="#eaf1fb" stroke="#2B5A9E" strokeWidth=".5"/><path d="M7 17h6" stroke="#2B5A9E" strokeWidth="1.5" strokeLinecap="round"/><path d="M10 14v3" stroke="#2B5A9E" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="9" r="1.5" fill="#F5C97A"/></svg>,
 };
 
-const IconHome = () => (
-  <svg width="22" height="22" viewBox="0 0 20 20" fill="none">
-    <path d="M3 9.5L10 3l7 6.5" stroke="#2B5A9E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M5 8.5v7a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1v-7" stroke="#2B5A9E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+const IconCalendar = () => (
+  <svg width="26" height="26" viewBox="0 0 20 20" fill="none">
+    <rect x="2" y="4" width="16" height="14" rx="2" stroke="#2B5A9E" strokeWidth="1.5"/>
+    <path d="M2 8h16" stroke="#2B5A9E" strokeWidth="1.5"/>
+    <path d="M6 2v4M14 2v4" stroke="#F5C97A" strokeWidth="1.5" strokeLinecap="round"/>
+    <rect x="5" y="11" width="3" height="3" rx=".5" fill="#2B5A9E" opacity=".6"/>
+    <rect x="9" y="11" width="3" height="3" rx=".5" fill="#2B5A9E" opacity=".3"/>
   </svg>
 );
 
@@ -53,11 +56,11 @@ const IconMic = ({ active }) => (
   </svg>
 );
 
-const IconNotes = () => (
+const IconNotes = ({ active=false }) => (
   <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-    <rect x="4" y="3" width="12" height="14" rx="1.5" stroke="#2B5A9E" strokeWidth="1.5"/>
-    <path d="M7 7h6M7 10h6M7 13h4" stroke="#2B5A9E" strokeWidth="1.5" strokeLinecap="round"/>
-    <path d="M12 13l3 3" stroke="#F5C97A" strokeWidth="1.5" strokeLinecap="round"/>
+    <rect x="4" y="3" width="12" height="14" rx="1.5" stroke={active?"#fff":"#2B5A9E"} strokeWidth="1.5"/>
+    <path d="M7 7h6M7 10h6M7 13h4" stroke={active?"#fff":"#2B5A9E"} strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M12 13l3 3" stroke={active?"rgba(255,255,255,0.6)":"#F5C97A"} strokeWidth="1.5" strokeLinecap="round"/>
   </svg>
 );
 
@@ -319,6 +322,8 @@ function NoteCard({note,onDelete,onEdit}){
 export default function NomadBook({ onClose, auth }) {
   const [tab,setTab]               = useState("notes");
   const [notes,setNotes]           = useState(()=>load("nb_notes",[]));
+  // Recharge les notes à chaque ouverture de NomadBook
+  useEffect(()=>{ setNotes(load("nb_notes",[])); },[]);
   const [periods,setPeriods]       = useState([]);
   const [syntheses,setSyntheses]   = useState(()=>load("nb_syntheses",{}));
   const [loadingPeriods,setLoadingPeriods] = useState(true);
@@ -458,7 +463,7 @@ export default function NomadBook({ onClose, auth }) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px 4px"}}>
           <span style={{fontSize:34,fontWeight:800,color:C.accent,fontFamily:"Phenomena,sans-serif",letterSpacing:-1,lineHeight:1}}>NomadBook</span>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <button onClick={()=>onClose?onClose():window.location.href="https://cal-flow-jade.vercel.app"} style={{background:"none",border:"none",cursor:"pointer",padding:2,display:"flex"}}><IconHome/></button>
+            <button onClick={()=>onClose?onClose():window.location.href="https://cal-flow-jade.vercel.app"} style={{background:"none",border:"none",cursor:"pointer",padding:2,display:"flex"}}><IconCalendar/></button>
             <button onClick={()=>{setEditingPeriod(null);setPeriodFormOpen(true);}} style={{background:"none",border:"none",cursor:"pointer",padding:2,display:"flex"}}><IconSettings/></button>
           </div>
         </div>
@@ -473,7 +478,7 @@ export default function NomadBook({ onClose, auth }) {
             <IconMic active={voice.listening}/>Micro
           </button>
           <button onClick={()=>setTab("notes")} style={{...(tab==="notes"?btnActive:btnStyle),display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-            <IconNotes/>Notes
+            <IconNotes active={tab==="notes"}/>Notes
             {periodNotes.length>0&&<span style={{background:tab==="notes"?"rgba(255,255,255,0.3)":C.accent,color:"#fff",borderRadius:10,fontSize:10,fontWeight:800,padding:"1px 5px",lineHeight:1.4}}>{periodNotes.length}</span>}
           </button>
           <button onClick={()=>setTab("rapport")} style={{...(tab==="rapport"?btnActive:btnStyle),display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
@@ -489,7 +494,7 @@ export default function NomadBook({ onClose, auth }) {
       {!calAvailable&&!loadingPeriods&&(
         <div style={{background:C.amberLight,border:`1px solid ${C.gold}`,margin:"8px 16px",borderRadius:10,padding:"10px 14px",fontSize:12,color:C.amber,fontWeight:600}}>
           📅 Calendrier iCloud indisponible — NomadCal fonctionne en mode local.
-          <button onClick={loadPeriods} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",fontSize:12,fontWeight:700,marginLeft:8}}>Réessayer</button>
+          <button onClick={()=>{ setCalAvailable(true); setLoadingPeriods(true); setTimeout(loadPeriods,100); }} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",fontSize:12,fontWeight:700,marginLeft:8}}>Réessayer</button>
         </div>
       )}
 
